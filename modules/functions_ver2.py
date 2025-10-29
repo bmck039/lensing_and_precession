@@ -15,8 +15,8 @@ from modules.default_params_ver2 import *
 import numpy as np
 
 error_handler = np.seterr(invalid="raise")
-from scipy.integrate import simps
-from scipy.optimize import fsolve
+from scipy.integrate import simpson as simps
+from scipy.optimize import fsolve, minimize_scalar, Bounds
 import math
 from pycbc.filter import match, optimized_match, make_frequency_series
 from pycbc.types import FrequencySeries, TimeSeries
@@ -26,6 +26,7 @@ import time
 import pickle
 import copy
 from typing import Union, Type, Tuple, List, Dict, Any
+import inspect
 
 
 ######################################
@@ -76,6 +77,7 @@ def get_gw(
     f_min=20,
     delta_f=0.25,
     lens_Class=LensingGeo,
+    prec_Class=Precessing,
     prec_Class=Precessing,
     frequencySeries=True,
 ):
@@ -597,6 +599,24 @@ def SNR(
 # Section 6: Mismatch #
 #######################
 
+def get_mismatch_from_strain(t_h, s_h, f, psd = None, use_opt_match = True):
+
+    if psd is None:
+        psd = Sn(f)
+    
+    t_h.resize(len(s_h))
+
+    match_func = optimized_match if use_opt_match else match
+    match_val, index, phi = match_func(t_h, s_h, psd, return_phase=True)  # type: ignore
+    match_val_coarse, index_coarse, phi_coarse = match(t_h, s_h, psd, return_phase=True) # type: ignore
+
+    if(match_val_coarse < match_val):
+        index = index_coarse
+        phi = phi_coarse
+        match_val = match_val_coarse
+
+    mismatch = 1 - match_val
+    return mismatch, index, phi
 
 def mismatch(
     t_params: dict,  # template parameters
@@ -643,16 +663,7 @@ def mismatch(
     t_h = t_gw["strain"]
     s_gw = get_gw(s_params, f_min, delta_f, lens_Class, prec_Class)
     s_h = s_gw["strain"]
-    t_h.resize(len(s_h))
-
-    if psd is None:
-        f_arr = s_gw["f_array"]
-        psd = Sn(f_arr)
-
-    match_func = optimized_match if use_opt_match else match
-    match_val, index, phi = match_func(t_h, s_h, psd, return_phase=True)  # type: ignore
-
-    mismatch = 1 - match_val
+    mismatch, index, phi = get_mismatch_from_strain(t_h, s_h, s_gw['f_array'])
 
     return {"mismatch": mismatch, "index": index, "phi": phi}
 
@@ -661,6 +672,27 @@ def mismatch(
 # Section 7: Optimize Mismatch Over Parameters #
 ################################################
 
+def get_mismatch_gamma_P_helper(
+    t_params: dict,  # template parameters
+    s_params: dict,  # source parameters
+    f_min=20,
+    delta_f=0.25,
+    psd=None,
+    lens_Class=LensingGeo,
+    prec_Class=Precessing,
+    use_opt_match=True):
+    def inner(gamma_P):
+        return mismatch(
+            {**t_params, "gamma_P": gamma_P},
+            s_params,
+            f_min,
+            delta_f,
+            psd,
+            lens_Class,
+            prec_Class,
+            use_opt_match,
+        )['mismatch']
+    return inner
 
 def optimize_mismatch_gammaP(
     t_params: dict,  # template parameters
@@ -717,41 +749,18 @@ def optimize_mismatch_gammaP(
     if "gamma_P" not in t_params_copy:
         raise ValueError("t_params must be precessing parameters")
 
-    gamma_arr = np.linspace(0, 2 * np.pi, 51)
+    mismatch_at_gamma_P = get_mismatch_gamma_P_helper(t_params_copy, s_params_copy, f_min, delta_f, psd, lens_Class, prec_Class, use_opt_match)
 
-    mismatch_dict = {
-        gamma_P: mismatch(
-            {**t_params_copy, "gamma_P": gamma_P},
-            s_params_copy,
-            f_min,
-            delta_f,
-            psd,
-            lens_Class,
-            prec_Class,
-            use_opt_match,
-        )
-        for gamma_P in gamma_arr
-    }
+    res = minimize_scalar(mismatch_at_gamma_P, bounds=(0, 2*np.pi))
 
-    ep_arr = np.array([mismatch_dict[gamma_P]["mismatch"] for gamma_P in gamma_arr])
-    idx_arr = np.array([mismatch_dict[gamma_P]["index"] for gamma_P in gamma_arr])
-    phi_arr = np.array([mismatch_dict[gamma_P]["phi"] for gamma_P in gamma_arr])
+    min_mismatch = res.fun
+    min_gamma_P = res.x
 
-    ep_min_idx = np.argmin(ep_arr)
-    ep_max_idx = np.argmax(ep_arr)
+    if(not(res.success)): print("Warning: Minimization failed for t parameters: ", t_params_copy, "\ns parameters: ", s_params_copy) 
 
     results = {
-        "ep_min": np.min(ep_arr),
-        "ep_min_gammaP": gamma_arr[ep_min_idx],
-        "ep_min_idx": idx_arr[ep_min_idx],
-        "ep_min_phi": phi_arr[ep_min_idx],
-        "ep_max": np.max(ep_arr),
-        "ep_max_gammaP": gamma_arr[ep_max_idx],
-        "ep_max_idx": idx_arr[ep_max_idx],
-        "ep_max_phi": phi_arr[ep_max_idx],
-        "ep_0": ep_arr[0],
-        "ep_0_idx": idx_arr[0],
-        "ep_0_phi": phi_arr[0],
+        "ep_min": min_mismatch,
+        "ep_min_gammaP": min_gamma_P,
     }
 
     return results
