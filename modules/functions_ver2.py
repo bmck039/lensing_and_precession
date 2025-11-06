@@ -522,23 +522,22 @@ def Sn(f_arr, f_min=20, delta_f=0.25, frequencySeries=True):
         The power spectral density of the aLIGO noise curve.
     """
 
-    Sn_val = np.zeros_like(f_arr)
-    for i in range(len(f_arr)):
-        if f_arr[i] < f_min:
-            Sn_val[i] = np.inf
-        else:
-            S0 = 1e-49
-            f0 = 215
-            Sn_temp = (
-                np.power(f_arr[i] / f0, -4.14)
-                - 5 * np.power(f_arr[i] / f0, -2)
-                + 111
-                * (
-                    (1 - np.power(f_arr[i] / f0, 2) + 0.5 * np.power(f_arr[i] / f0, 4))
-                    / (1 + 0.5 * np.power(f_arr[i] / f0, 2))
-                )
-            )
-            Sn_val[i] = Sn_temp * S0
+    # Vectorized implementation of the aLIGO PSD (0903.0338)
+    f_arr = np.asarray(f_arr)
+    S0 = 1e-49
+    f0 = 215.0
+    x = f_arr / f0
+
+    # Base PSD expression evaluated elementwise
+    Sn_temp = (
+        np.power(x, -4.14)
+        - 5.0 * np.power(x, -2.0)
+        + 111.0 * ((1.0 - x**2 + 0.5 * x**4) / (1.0 + 0.5 * x**2))
+    )
+    Sn_val = Sn_temp * S0
+
+    # Enforce infinite PSD below f_min
+    Sn_val = np.where(f_arr < f_min, np.inf, Sn_val)
 
     if frequencySeries:
         return FrequencySeries(Sn_val, delta_f=delta_f)
@@ -599,24 +598,67 @@ def SNR(
 # Section 6: Mismatch #
 #######################
 
-def get_mismatch_from_strain(t_h, s_h, f, psd = None, use_opt_match = True):
+def get_mismatch_from_strain(t_h, s_h, f, psd=None, use_opt_match=True, compare_both=False):
+    """
+    Calculates the mismatch between two strain FrequencySeries.
+
+    Parameters
+    ----------
+    t_h : FrequencySeries
+        The template waveform strain.
+    s_h : FrequencySeries
+        The source waveform strain.
+    f : np.ndarray
+        The frequency array.
+    psd : FrequencySeries, optional
+        The power spectral density of the detector noise. If None, calculated from f.
+    use_opt_match : bool, optional
+        If True, uses optimized_match. If False, uses match. Default is True.
+    compare_both : bool, optional
+        If True, computes both match and optimized_match and returns the result 
+        with the maximum match (minimum mismatch). Default is False.
+
+    Returns
+    -------
+    tuple
+        (mismatch, index, phi) where:
+        - mismatch (float): The mismatch between the two waveforms.
+        - index (int): The number of samples to shift.
+        - phi (float): The phase to rotate.
+    """
 
     if psd is None:
         psd = Sn(f)
     
     t_h.resize(len(s_h))
 
-    match_func = optimized_match if use_opt_match else match
-    match_val, index, phi = match_func(t_h, s_h, psd, return_phase=True)  # type: ignore
-    match_val_coarse, index_coarse, phi_coarse = match(t_h, s_h, psd, return_phase=True) # type: ignore
-
-    if(match_val_coarse < match_val):
-        index = index_coarse
-        phi = phi_coarse
-        match_val = match_val_coarse
-
-    mismatch = 1 - match_val
-    return mismatch, index, phi
+    if compare_both:
+        # Compute both match and optimized_match, take the one with highest match
+        results = []
+        for func in [match, optimized_match]:
+            try:
+                match_val, index, phi = func(t_h, s_h, psd, return_phase=True)  # type: ignore
+                results.append({
+                    "match_val": match_val,
+                    "index": index,
+                    "phi": phi
+                })
+            except Exception:
+                continue
+        
+        if not results:
+            raise RuntimeError("Both match and optimized_match failed.")
+        
+        # Take the result with maximum match value (minimum mismatch)
+        best_result = max(results, key=lambda x: x["match_val"])
+        mismatch = 1 - best_result["match_val"]
+        return mismatch, best_result["index"], best_result["phi"]
+    else:
+        # Use the specified match function
+        match_func = optimized_match if use_opt_match else match
+        match_val, index, phi = match_func(t_h, s_h, psd, return_phase=True)  # type: ignore
+        mismatch = 1 - match_val
+        return mismatch, index, phi
 
 def mismatch(
     t_params: dict,  # template parameters
@@ -627,6 +669,7 @@ def mismatch(
     lens_Class=LensingGeo,
     prec_Class=Precessing,
     use_opt_match=True,
+    compare_both=False,
 ) -> dict:
     """
     Calculates the mismatch between two waveforms using the given parameters.
@@ -649,6 +692,9 @@ def mismatch(
         A class representing the precessing waveform. Default is Precessing.
     use_opt_match : bool, optional
         If True, uses the optimized_match function from pycbc.filter. Default is True.
+    compare_both : bool, optional
+        If True, computes both match and optimized_match and returns the result 
+        with the maximum match (minimum mismatch). Default is False.
 
     Returns
     -------
@@ -663,9 +709,21 @@ def mismatch(
     t_h = t_gw["strain"]
     s_gw = get_gw(s_params, f_min, delta_f, lens_Class, prec_Class)
     s_h = s_gw["strain"]
-    mismatch, index, phi = get_mismatch_from_strain(t_h, s_h, s_gw['f_array'])
+    
+    # Resize template to match source length before computing mismatch
+    t_h.resize(len(s_h))
+    
+    # Calculate PSD if not provided
+    if psd is None:
+        f_arr = s_gw['f_array']
+        psd = Sn(f_arr, f_min=f_min, delta_f=delta_f)
+    
+    # Pass psd to get_mismatch_from_strain
+    mismatch_val, index, phi = get_mismatch_from_strain(
+        t_h, s_h, s_gw['f_array'], psd, use_opt_match, compare_both
+    )
 
-    return {"mismatch": mismatch, "index": index, "phi": phi}
+    return {"mismatch": mismatch_val, "index": index, "phi": phi}
 
 
 ################################################
@@ -744,8 +802,7 @@ def optimize_mismatch_gammaP(
     """
 
     t_params_copy, s_params_copy = set_to_params(t_params, s_params)
-
-    # condition that t_params must be precessing parameters and already contain gamma_P
+    
     if "gamma_P" not in t_params_copy:
         raise ValueError("t_params must be precessing parameters")
 
@@ -762,7 +819,7 @@ def optimize_mismatch_gammaP(
         "ep_min": min_mismatch,
         "ep_min_gammaP": min_gamma_P,
     }
-
+    
     return results
 
 

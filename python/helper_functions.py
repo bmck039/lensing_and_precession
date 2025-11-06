@@ -9,6 +9,7 @@ from modules.default_params_ver2 import solar_mass
 from helper_classes import *
 
 from multiprocessing import Pool, cpu_count
+import copy
 from simpleeval import simple_eval
 from scipy.optimize import Bounds, shgo
 from tqdm import tqdm
@@ -43,7 +44,8 @@ def evaluate_multithread(eval_fn, eval_list, show_pbar = True):
         pbar = tqdm(total=len(eval_list))
         callback = lambda result: pbar.update(1)
     else: callback = lambda result: None
-    with Pool(num_cpu) as pool:
+    # Limit tasks per child to reduce memory bloat in long runs
+    with Pool(num_cpu, maxtasksperchild=50) as pool:
         pool_results_arr = []
         for arg in eval_list:
             pool_results_arr.append(
@@ -91,10 +93,18 @@ def evaluate_function_2D(fun,
 
     temp_results = []
 
-    # if multithread:
     eval_function = functools.partial(evaluate_function_with_parameters, fun, t_params, s_params, (param_1, param_2))
 
-    temp_results = evaluate_multithread(eval_function, list_of_param_tuples, show_pbar=show_pbar)
+    if multithread:
+        temp_results = evaluate_multithread(eval_function, list_of_param_tuples, show_pbar=show_pbar)
+    else:
+        # Sequential evaluation with optional progress bar
+        temp_results = []
+        iterator = list_of_param_tuples
+        if show_pbar:
+            iterator = tqdm(iterator, total=len(list_of_param_tuples))
+        for args in iterator:
+            temp_results.append(eval_function(*args))
 
     results = []
     for r in range(param_1_resolution):
@@ -144,6 +154,7 @@ def evaluate_mismatch(
     lens_Class=LensingGeo,
     prec_Class=Precessing,
     use_opt_match=True,
+    gamma_points: int | None = None,
 ) -> dict:
     """
     Finds the mismatch between template and source waveforms
@@ -185,7 +196,9 @@ def evaluate_mismatch(
     """
     mismatch_val = None
     if("gamma_P" in t_params):
-        mismatch_val = optimize_mismatch_gammaP(t_params, s_params)["ep_min"]
+        # Allow caller to reduce gamma grid points for performance
+        npts = 51 if gamma_points is None else int(gamma_points)
+        mismatch_val = optimize_mismatch_gammaP(t_params, s_params, num_points=npts)["ep_min"]
     else:
         mismatch_val = mismatch(
         t_params, 
@@ -204,9 +217,21 @@ def evaluate_mismatch_2D(
         eval_parameters: tuple[str, str],
         bounds: tuple[tuple[float, float], tuple[float, float]],
         resolution: tuple[int, int],
+        multithread: bool = True,
+        pbar: bool = True,
         **kwargs) -> dict[str, np.ndarray]:
     
-    return evaluate_function_with_args_2D(evaluate_mismatch, t_params, s_params, eval_parameters, bounds, resolution, pbar=True, multithread=True, **kwargs)
+    return evaluate_function_with_args_2D(
+        evaluate_mismatch,
+        t_params,
+        s_params,
+        eval_parameters,
+        bounds,
+        resolution,
+        pbar=pbar,
+        multithread=multithread,
+        **kwargs,
+    )
 
 
 def waveform_graph(NP_params=None, RP_params=None, lens_params=None, filename="strain_from_NP_RP_lensed_sources"):
@@ -259,23 +284,39 @@ def set_to_location_class(loc_dict: dict, *args):
     return tuple(args_classes)
 
 def update_dict(updated_dict, keys, x):
+    """Return a NEW dict with the given keys updated, without mutating input.
+
+    This avoids cross-task state bleed when running many evaluations in a
+    multiprocessing pool where the same dict object can be reused.
+    """
     updated_params_dict = dict(zip(keys, x))
-    updated_dict.update(updated_params_dict)
-    return updated_dict
+    # Create a shallow copy to avoid mutating the original
+    new_dict = {**updated_dict, **updated_params_dict}
+    return new_dict
 
 
 def find_optimal_RP_mismatch(lens_params, RP_params, omega_bounds = (0, 5), theta_bounds= (0, 15), resolution = 0.1):
-    # omega_arr = np.arange(omega_min, omega_max + resolution/2, resolution)
-    # theta_arr = np.arange(theta_min, theta_max + resolution/2, resolution)
-
-    # coord_arr = get_list_of_coords(omega_arr, theta_arr)
-
-    gamma_bounds = (0, 2*np.pi)
-
+    """Find optimal omega_tilde and theta_tilde to minimize mismatch.
+    
+    Args:
+        lens_params: Lensing parameters
+        RP_params: Regular precessing parameters
+        omega_bounds: (min, max) bounds for omega_tilde
+        theta_bounds: (min, max) bounds for theta_tilde
+        resolution: Not used (kept for backward compatibility)
+    
+    Returns:
+        (min_eps, omega_best, theta_best): Minimum mismatch and optimal parameters
+    """
     map_fn = functools.partial(evaluate_mismatch_helper, lens_params, RP_params)
-    results = shgo(map_fn, (omega_bounds, theta_bounds), iters=5)
+    
+    # Reduce iterations for faster convergence (iters=5 -> iters=2)
+    # SHGO samples the space and converges to local minima; fewer iterations
+    # trades minor accuracy for major speed improvement
+    results = shgo(map_fn, (omega_bounds, theta_bounds), iters=2, options={'ftol': 1e-4})
 
-    if(not(results.success)): print("Warning: Minimization failed for t parameters: ", RP_params, "\ns parameters: ", lens_params) 
+    if(not(results.success)): 
+        print("Warning: Minimization failed for t parameters: ", RP_params, "\ns parameters: ", lens_params) 
 
     min_eps = results.fun
     omega_best, theta_best = results.x

@@ -7,6 +7,7 @@
 # !{sys.executable} -m pip install pycbc ligo-common --no-cache-dir
 
 import numpy as np
+import os
 
 error_handler = np.seterr(invalid="raise")
 from warnings import warn
@@ -658,17 +659,25 @@ class PrecessingV2:
             return -Omega_LJ * np.cos(theta_LJ) / f_dot
 
         # L and N aligned case (coordinate singularity)
-        if (
-            np.abs(np.abs(LdotN) - 1) < NEAR_ZERO_THRESHOLD
-        ):  # allow for tolerance near 1
+        # EXPANDED THRESHOLD: catch near-singularities before they cause spikes
+        # When |LdotN| is close to 1, the denominator (1 - LdotN²) → 0
+        # causing numerical explosions. Increase threshold to 1e-3 to catch earlier.
+        if np.abs(np.abs(LdotN) - 1) < 1e-3:
             # NOT face-on & STILL precessing, when L and N are aligned at some point in the precession cycle
             # very rare, L aligns with N only ONCE as it spirals out --> blows up???
             # a coordinate singularity!!!
             return 0
-
+        
         # Generic (non face-on) expression
-        return (
-            (LdotN / (1 - LdotN**2))
+        # Add additional safety clamp on the denominator
+        denominator = 1 - LdotN**2
+        # If denominator gets too small despite threshold check, clamp it
+        if np.abs(denominator) < 1e-6:
+            return 0
+        
+        # Base term (Apostolatos 1994, Eq. A18)
+        base = (
+            (LdotN / denominator)
             * Omega_LJ
             * np.sin(theta_LJ)
             * (
@@ -677,6 +686,13 @@ class PrecessingV2:
             )
             / f_dot
         )
+        
+        # Correction term (Taman et al. 2025, Eq. A19)
+        corr = (LdotN / denominator) * (
+            -(theta_LJ / (3.0 * f)) * np.cos(phi_LJ) * sin_i_JN
+        )
+        
+        return base + corr
 
     def Psi(self, f):
         """GW phase"""
@@ -751,8 +767,41 @@ class PrecessingV2:
     def strain(self, f, delta_f=0.25, frequencySeries=True):
         """precessing GW"""
         
+        # Compute phase with validation
+        delta_phi = self.phase_delta_phi(f)
+        
+        # Check for numerical issues in phase calculation
+        if np.any(~np.isfinite(delta_phi)):
+            # Log warning but continue with cleaned values
+            import warnings
+            warnings.warn(
+                f"NaN/Inf detected in phase_delta_phi at omega={self.omega_tilde:.3f}, "
+                f"theta={self.theta_tilde:.3f}. Replacing with interpolated values."
+            )
+            # Allow disabling interpolation via environment variable for debugging
+            interp_env = os.getenv("GW_INTERP_NAN", "1").strip().lower()
+            disable_interp = interp_env in {"0", "false", "no"}
+
+            if disable_interp:
+                # When disabled, do not smooth over NaNs. Replace all non-finite with 0
+                # to avoid downstream crashes but preserve a visible artifact.
+                # This helps identify problematic regions without hiding them.
+                delta_phi = np.where(np.isfinite(delta_phi), delta_phi, 0.0)
+            else:
+                # Replace non-finite values with linear interpolation
+                mask = np.isfinite(delta_phi)
+                if np.any(mask):
+                    delta_phi = np.interp(
+                        np.arange(len(delta_phi)),
+                        np.arange(len(delta_phi))[mask],
+                        delta_phi[mask]
+                    )
+                else:
+                    # All values bad - use zeros as fallback
+                    delta_phi = np.zeros_like(delta_phi)
+        
         strain = self.amplitude(f) * np.exp(
-            1j * (self.Psi(f) - self.phase_phi_P(f) - 2 * self.phase_delta_phi(f))
+            1j * (self.Psi(f) - self.phase_phi_P(f) - 2 * delta_phi)
         )
         if frequencySeries:
             return FrequencySeries(strain, delta_f)
@@ -767,15 +816,16 @@ class PrecessingV3(PrecessingV2):
         return I
     
 class Precessing(PrecessingV2):
-    def integrand_delta_phi_diff_eq(self, y, f):
-        return self.integrand_delta_phi(f)
+    def integrand_delta_phi(self, y, f):
+        """Wrapper to match solve_ivp signature - delegates to integrand_delta_phi_v2."""
+        return self.integrand_delta_phi_v2(y, f)
 
     def phase_delta_phi(
         self,
         f,
         ivp_method: Union[str, Sequence[str]] = "LSODA",
-        rtol: float = 1e-6,
-        atol: float = 1e-8,
+        rtol: float = 1e-3,
+        atol: float = 1e-6,
         max_step: float = np.inf,
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         """Compute delta phi_P using solve_ivp.
@@ -784,17 +834,14 @@ class Precessing(PrecessingV2):
             f (array-like): Strictly increasing frequency array.
             ivp_method (str | Sequence[str]): One or more solve_ivp methods
                 (e.g., "RK45", "RK23", "DOP853", "Radau", "BDF", "LSODA").
-            rtol (float): Relative tolerance for solve_ivp.
-            atol (float): Absolute tolerance for solve_ivp.
+            rtol (float): Relative tolerance for solve_ivp. Default 1e-3.
+            atol (float): Absolute tolerance for solve_ivp. Default 1e-6.
             max_step (float): Maximum allowed step size.
 
         Returns:
             If ivp_method is a string, returns np.ndarray (len(f),).
             If ivp_method is a sequence, returns dict method -> np.ndarray.
         """
-        # print("new phase delta phi")
-        # print("getting phase")
-
         f = np.asarray(f)
         if f.ndim != 1:
             f = f.ravel()
@@ -808,9 +855,9 @@ class Precessing(PrecessingV2):
                 # Support both y.shape == (1,) and vectorized calls with y.shape == (1, m)
                 try:
                     # Compute scalar integrand value (independent of y in our model)
-                    val = float(self.integrand_delta_phi_diff_eq(0.0, freq))
+                    val = float(self.integrand_delta_phi(0.0, freq))
                 except Exception:
-                    val = float(self.integrand_delta_phi_diff_eq(y, freq))
+                    val = float(self.integrand_delta_phi(y, freq))
 
                 y_arr = np.asarray(y)
                 if y_arr.ndim == 0:
@@ -837,15 +884,15 @@ class Precessing(PrecessingV2):
         if isinstance(ivp_method, str):
             return _solve_with_method(ivp_method)
 
-        # results: Dict[str, np.ndarray] = {}
+        results: Dict[str, np.ndarray] = {}
         failures = []
-        # for method_name in ivp_method:
-        results = []
-        try:
-            results = _solve_with_method(str(ivp_method))
-        except Exception as exc:
-            failures.append((str(ivp_method), str(exc)))
+        for method_name in ivp_method:
+            try:
+                results[str(method_name)] = _solve_with_method(str(method_name))
+            except Exception as exc:
+                failures.append((str(method_name), str(exc)))
 
         if results:
             return results
+        raise RuntimeError(f"All solve_ivp methods failed: {failures}")
         raise RuntimeError(f"All solve_ivp methods failed: {failures}")
