@@ -5,13 +5,10 @@ from modules.Classes_ver2 import *
 from modules.functions_ver2 import *
 from modules.functions_Precessing import *
 from modules.default_params_ver2 import solar_mass
+from modules.multithreading import evaluate_multithread
 
 from helper_classes import *
 
-import os
-import multiprocessing as mp
-from multiprocessing import Pool, cpu_count
-import concurrent.futures  # retained for potential future use, not used in new Pool implementation
 import copy
 from simpleeval import simple_eval
 from scipy.optimize import Bounds, shgo
@@ -39,66 +36,6 @@ def evaluate_function_with_parameters(fun,
                                       *coord_vals: tuple[float, ...]):
     return fun(update_dict(t_params, coord_names, coord_vals), 
             s_params)
-
-
-def _worker_index_wrapper(item):
-    """Top-level worker wrapper so it is pickleable.
-    Receives (idx, eval_fn, coords) and returns (idx, result or Exception).
-    """
-    idx, eval_fn, coords = item
-    try:
-        return idx, eval_fn(*coords)
-    except Exception as e:
-        return idx, e
-
-def evaluate_multithread(eval_fn, eval_list, show_pbar=True, max_workers=None, chunksize=8, start_method=None, set_single_thread_blas=False):
-    """Evaluate a function over a list of coordinate tuples using a multiprocessing Pool.
-
-    Differences from prior version:
-    - Streams results as they complete (no massive backlog of pending results).
-    - Avoids apply_async + result.get() pattern which can deadlock if pipes fill.
-    - Provides basic error capture per task.
-    - Uses modest chunksize to amortize scheduling while keeping responsiveness.
-    """
-    if max_workers is None:
-        # Cap at physical cores available but never exceed length of work
-        max_workers = min(cpu_count(), len(eval_list))
-    if max_workers < 1:
-        return []
-
-    # Optional: reduce nested thread contention from BLAS/OpenMP libs
-    if set_single_thread_blas:
-        for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
-            os.environ.setdefault(var, "1")
-
-    # Package arguments with index so we can restore ordering after unordered completion
-    packaged = [(i, eval_fn, coords) for i, coords in enumerate(eval_list)]
-
-    results = [None] * len(eval_list)
-    errors = 0
-    if show_pbar:
-        pbar = tqdm(total=len(eval_list))
-
-    # Streaming consumption
-    ctx = mp.get_context(start_method) if start_method else mp.get_context()
-    with ctx.Pool(processes=max_workers) as pool:
-        for idx, value in pool.imap_unordered(_worker_index_wrapper, packaged, chunksize):
-            if isinstance(value, Exception):
-                errors += 1
-                results[idx] = value
-            else:
-                results[idx] = value
-            if show_pbar:
-                pbar.update(1)
-
-    if show_pbar:
-        pbar.close()
-
-    if errors:
-        print(f"Parallel evaluation: {errors} tasks raised exceptions (stored as None).")
-        print("First error:", next(r for r in results if isinstance(r, Exception)))
-
-    return results
 
 def get_list_of_coords(coord_1_array, coord_2_array):
     """Return a deterministic row-major list of (coord1, coord2) pairs.
