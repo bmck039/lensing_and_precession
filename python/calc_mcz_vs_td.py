@@ -217,8 +217,10 @@ if __name__ == "__main__":
             num_mcz = num_slice_points
             one_cycle = get_calculated_mcz(1, td)
             two_cycle = get_calculated_mcz(2, td)
-            m_lb = two_cycle - 10
-            m_ub = one_cycle + 10
+            print("One cycle mass:", one_cycle)
+            print("Two cycle mass:", two_cycle)
+            m_lb = (two_cycle - 10) * solar_mass
+            m_ub = (one_cycle + 10) * solar_mass
             x_label = r"$\mathcal{M}_{\text{s}}$ $[M_{\odot}]$"
             label = r"$\Delta t_d$"
             value = td * 1000
@@ -227,6 +229,7 @@ if __name__ == "__main__":
 
 
             x_list, mismatch_list, theta_best_list, omega_best_list = calc_function_across_points_1D(eval_fn, 'mcz', (m_lb, m_ub), num_mcz)
+            x_list = x_list / solar_mass  # convert to solar masses for plotting
 
             mismatch_list, theta_best_list, omega_best_list = np.squeeze(mismatch_list), np.squeeze(theta_best_list), np.squeeze(omega_best_list)
         

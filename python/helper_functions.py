@@ -8,7 +8,10 @@ from modules.default_params_ver2 import solar_mass
 
 from helper_classes import *
 
+import os
+import multiprocessing as mp
 from multiprocessing import Pool, cpu_count
+import concurrent.futures  # retained for potential future use, not used in new Pool implementation
 import copy
 from simpleeval import simple_eval
 from scipy.optimize import Bounds, shgo
@@ -37,27 +40,93 @@ def evaluate_function_with_parameters(fun,
     return fun(update_dict(t_params, coord_names, coord_vals), 
             s_params)
 
-def evaluate_multithread(eval_fn, eval_list, show_pbar = True):
-    num_cpu = cpu_count()
-    temp_results = []
-    if(show_pbar):
+
+def _worker_index_wrapper(item):
+    """Top-level worker wrapper so it is pickleable.
+    Receives (idx, eval_fn, coords) and returns (idx, result or Exception).
+    """
+    idx, eval_fn, coords = item
+    try:
+        return idx, eval_fn(*coords)
+    except Exception as e:
+        return idx, e
+
+def evaluate_multithread(eval_fn, eval_list, show_pbar=True, max_workers=None, chunksize=8, start_method=None, set_single_thread_blas=False):
+    """Evaluate a function over a list of coordinate tuples using a multiprocessing Pool.
+
+    Differences from prior version:
+    - Streams results as they complete (no massive backlog of pending results).
+    - Avoids apply_async + result.get() pattern which can deadlock if pipes fill.
+    - Provides basic error capture per task.
+    - Uses modest chunksize to amortize scheduling while keeping responsiveness.
+    """
+    if max_workers is None:
+        # Cap at physical cores available but never exceed length of work
+        max_workers = min(cpu_count(), len(eval_list))
+    if max_workers < 1:
+        return []
+
+    # Optional: reduce nested thread contention from BLAS/OpenMP libs
+    if set_single_thread_blas:
+        for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+            os.environ.setdefault(var, "1")
+
+    # Package arguments with index so we can restore ordering after unordered completion
+    packaged = [(i, eval_fn, coords) for i, coords in enumerate(eval_list)]
+
+    results = [None] * len(eval_list)
+    errors = 0
+    if show_pbar:
         pbar = tqdm(total=len(eval_list))
-        callback = lambda result: pbar.update(1)
-    else: callback = lambda result: None
-    # Limit tasks per child to reduce memory bloat in long runs
-    with Pool(num_cpu, maxtasksperchild=50) as pool:
-        pool_results_arr = []
-        for arg in eval_list:
-            pool_results_arr.append(
-                pool.apply_async(eval_fn, args=arg, callback=callback))
-        
-        for res in pool_results_arr:
-            temp_results.append(res.get())
-    return temp_results
+
+    # Streaming consumption
+    ctx = mp.get_context(start_method) if start_method else mp.get_context()
+    with ctx.Pool(processes=max_workers) as pool:
+        for idx, value in pool.imap_unordered(_worker_index_wrapper, packaged, chunksize):
+            if isinstance(value, Exception):
+                errors += 1
+                results[idx] = value
+            else:
+                results[idx] = value
+            if show_pbar:
+                pbar.update(1)
+
+    if show_pbar:
+        pbar.close()
+
+    if errors:
+        print(f"Parallel evaluation: {errors} tasks raised exceptions (stored as None).")
+        print("First error:", next(r for r in results if isinstance(r, Exception)))
+
+    return results
 
 def get_list_of_coords(coord_1_array, coord_2_array):
-    tempList = np.transpose(np.meshgrid(coord_1_array, coord_2_array), (1, 2, 0))
-    return tempList.reshape(-1, tempList.shape[-1])
+    """Return a deterministic row-major list of (coord1, coord2) pairs.
+
+    We avoid relying on meshgrid/reshape/transposes which can be easy to
+    misalign with later indexing. This explicit construction guarantees the
+    ordering matches index = j + n2 * i used in results assembly.
+    """
+    pairs = []
+    for c1 in coord_1_array:           # i index (rows)
+        for c2 in coord_2_array:       # j index (cols)
+            pairs.append((float(c1), float(c2)))
+    return pairs
+
+def _call_fun_by_name(module_name: str, fun_name: str,
+                      t_params: dict, s_params: dict,
+                      coord_names: tuple[str, str], coord_vals: tuple[float, float],
+                      extra_kwargs: dict | None = None):
+    """Resolve a function by module/name and invoke on updated params.
+    This stays pickle-friendly for spawn/forkserver contexts.
+    """
+    import importlib
+    mod = importlib.import_module(module_name)
+    fn = getattr(mod, fun_name)
+    kwargs = extra_kwargs or {}
+    updated = update_dict(t_params, coord_names, coord_vals)
+    return fn(updated, s_params, **kwargs)
+
 
 def evaluate_function_2D(fun,
     t_params: dict[str, float],
@@ -66,69 +135,72 @@ def evaluate_function_2D(fun,
     bounds: tuple[tuple[float, float], tuple[float, float]],
     resolution: tuple[int, int],
     multithread: bool = True,
-    show_pbar: bool = True
+    show_pbar: bool = True,
+    extra_kwargs: dict | None = None
     ) -> dict[str, np.ndarray]:
 
     """
     Evaluates a function across a specified 2D parameter space
     """
 
-    param_1 = eval_parameters[0]
-    param_2 = eval_parameters[1]
-
-    param_1_bounds = bounds[0]
-    param_2_bounds = bounds[1]
-
-    param_1_resolution = resolution[0]
-    param_2_resolution = resolution[1]
+    param_1, param_2 = eval_parameters
+    param_1_bounds, param_2_bounds = bounds
+    param_1_resolution, param_2_resolution = resolution
 
     coord_1_array = np.linspace(param_1_bounds[0], param_1_bounds[1], param_1_resolution)
     coord_2_array = np.linspace(param_2_bounds[0], param_2_bounds[1], param_2_resolution)
 
     list_of_param_tuples = get_list_of_coords(coord_1_array, coord_2_array)
-
     total = param_1_resolution * param_2_resolution
-    
-    # if(multithread):
 
-    temp_results = []
-
-    eval_function = functools.partial(evaluate_function_with_parameters, fun, t_params, s_params, (param_1, param_2))
+    temp_results: list = []
+    kwargs = extra_kwargs or {}
 
     if multithread:
-        temp_results = evaluate_multithread(eval_function, list_of_param_tuples, show_pbar=show_pbar)
+        # Use spawn + function-by-name to avoid fork/OpenMP issues
+        if callable(fun):
+            module_name = fun.__module__
+            fun_name = fun.__name__
+        else:
+            module_name = __name__
+            fun_name = str(fun)
+
+        eval_list = [
+            (module_name, fun_name, t_params, s_params, (param_1, param_2), coords, kwargs)
+            for coords in list_of_param_tuples
+        ]
+
+        temp_results = evaluate_multithread(
+            _call_fun_by_name,
+            eval_list,
+            show_pbar=show_pbar,
+            max_workers=None,
+            chunksize=8,
+            start_method='spawn',
+            set_single_thread_blas=True,
+        )
     else:
-        # Sequential evaluation with optional progress bar
-        temp_results = []
         iterator = list_of_param_tuples
         if show_pbar:
             iterator = tqdm(iterator, total=len(list_of_param_tuples))
-        for args in iterator:
-            temp_results.append(eval_function(*args))
+        for c1, c2 in iterator:
+            updated = update_dict(t_params, (param_1, param_2), (c1, c2))
+            if callable(fun):
+                temp_results.append(fun(updated, s_params, **kwargs))
+            else:
+                temp_results.append(_call_fun_by_name(__name__, fun, updated, s_params, (param_1, param_2), (c1, c2), kwargs))
 
+    # Assemble row-major results matrix
     results = []
     for r in range(param_1_resolution):
-        sublist = []
+        row = []
         for c in range(param_2_resolution):
-            index = param_2_resolution * r + c
-            res = temp_results[index]
-            sublist.append(res)
-        results.append(sublist)
-    # else:
-    #     results = []
-    #     for coord_1 in coord_1_array:
-    #         sublist = []
-    #         for coord_2 in coord_2_array:
-    #             sublist.append(fun(Parameters({**t_params_copy,
-    #                                 param_1: coord_1,
-    #                                 param_2: coord_2
-    #                                 }), 
-    #                                 s_params_copy))
-    #             callback_update(None)
-    #         results.append(sublist)
+            idx = r * param_2_resolution + c
+            row.append(temp_results[idx])
+        results.append(row)
 
     results = np.asarray(results)
-    
+
     return {param_1: coord_1_array, param_2: coord_2_array, "results": results}
     
 def evaluate_function_with_args_2D(
@@ -142,8 +214,19 @@ def evaluate_function_with_args_2D(
     pbar: bool = False,
     **kwargs) -> dict[str, np.ndarray]:
 
-    partial = functools.partial(fun, **kwargs)
-    return evaluate_function_2D(partial, t_params, s_params, eval_parameters, bounds, resolution, multithread=multithread, show_pbar=pbar)
+    # Avoid functools.partial to keep multiprocessing pickle-friendly;
+    # pass kwargs down explicitly.
+    return evaluate_function_2D(
+        fun,
+        t_params,
+        s_params,
+        eval_parameters,
+        bounds,
+        resolution,
+        multithread=multithread,
+        show_pbar=pbar,
+        extra_kwargs=kwargs,
+    )
 
 def evaluate_mismatch(
     t_params: dict,  # template parameters
@@ -155,6 +238,7 @@ def evaluate_mismatch(
     prec_Class=Precessing,
     use_opt_match=True,
     gamma_points: int | None = None,
+    optimize_gamma: bool = True,
 ) -> dict:
     """
     Finds the mismatch between template and source waveforms
@@ -195,20 +279,29 @@ def evaluate_mismatch(
         - "mismatch_results" (list[float]): The updated mismatch results.
     """
     mismatch_val = None
-    if("gamma_P" in t_params):
-        # Allow caller to reduce gamma grid points for performance
+    if ("gamma_P" in t_params) and optimize_gamma:
+        # Optimize over gamma grid
         npts = 51 if gamma_points is None else int(gamma_points)
-        mismatch_val = optimize_mismatch_gammaP(t_params, s_params, num_points=npts)["ep_min"]
+        mismatch_val = optimize_mismatch_gammaP(
+            t_params,
+            s_params,
+            num_points=npts,
+            lens_Class=lens_Class,
+            prec_Class=prec_Class,
+            use_opt_match=use_opt_match,
+        )["ep_min"]
     else:
+        # Respect fixed gamma_P if provided (no optimization)
         mismatch_val = mismatch(
-        t_params, 
-        s_params, 
-        f_min,
-        delta_f,
-        psd,
-        lens_Class,
-        prec_Class,
-        use_opt_match)["mismatch"]
+            t_params,
+            s_params,
+            f_min,
+            delta_f,
+            psd,
+            lens_Class,
+            prec_Class,
+            use_opt_match,
+        )["mismatch"]
     return mismatch_val
 
 def evaluate_mismatch_2D(
@@ -295,7 +388,7 @@ def update_dict(updated_dict, keys, x):
     return new_dict
 
 
-def find_optimal_RP_mismatch(lens_params, RP_params, omega_bounds = (0, 5), theta_bounds= (0, 15), resolution = 0.1):
+def find_optimal_RP_mismatch(lens_params, RP_params, omega_bounds = (0, 5), theta_bounds= (0, 15)):
     """Find optimal omega_tilde and theta_tilde to minimize mismatch.
     
     Args:
@@ -313,20 +406,22 @@ def find_optimal_RP_mismatch(lens_params, RP_params, omega_bounds = (0, 5), thet
     # Reduce iterations for faster convergence (iters=5 -> iters=2)
     # SHGO samples the space and converges to local minima; fewer iterations
     # trades minor accuracy for major speed improvement
-    results = shgo(map_fn, (omega_bounds, theta_bounds), iters=2, options={'ftol': 1e-4})
+    gamma_bounds = (0, 2*np.pi)
+    results = shgo(map_fn, (omega_bounds, theta_bounds, gamma_bounds), iters=5, options={'ftol': 1e-4})
 
     if(not(results.success)): 
         print("Warning: Minimization failed for t parameters: ", RP_params, "\ns parameters: ", lens_params) 
 
     min_eps = results.fun
-    omega_best, theta_best = results.x
+    print(results.x)
+    omega_best, theta_best, _ = results.x
 
     RP_params = update_dict(RP_params, ["omega_tilde", "theta_tilde"], [omega_best, theta_best])
 
     return (min_eps, omega_best, theta_best)
 
 def evaluate_mismatch_helper(lens_params, RP_params, x):
-    updated_params_dict = update_dict(RP_params, ["omega_tilde", "theta_tilde"], x)
+    updated_params_dict = update_dict(RP_params, ["omega_tilde", "theta_tilde", "gamma_P"], x)
     # print("evaluating omega: {o}, theta: {t}, gamma: {g}".format(o=x[0], t=x[1], g=x[2]))
     # print("new SHGO")
     return optimize_mismatch_gammaP(updated_params_dict, lens_params)["ep_min"]

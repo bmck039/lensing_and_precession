@@ -92,172 +92,174 @@ def load_Tien_data(mass):
         data = pickle.load(f)
     return data
 
-sky_locations = {
-    # "20": {
-    # "theta_S": np.pi / 4,
-    # "phi_S": 0,
-    # "theta_J": np.pi / 2,
-    # "phi_J": np.pi / 2
-    # },
-    "20": {
-    "theta_S": np.pi / 4,
-    "phi_S": 0,
-    "theta_J": 8*np.pi / 9,
-    "phi_J": np.pi / 4
-    },
-    "30": {
-    "theta_S": np.pi / 4,
-    "phi_S": 0,
-    "theta_J": 8*np.pi / 9,
-    "phi_J": np.pi / 4
-    },
-    "40": {
-    "theta_S": np.pi / 4,
-    "phi_S": 0,
-    "theta_J": 8*np.pi / 9,
-    "phi_J": np.pi / 4
-    },
-}
+if __name__ == "__main__":
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-n', '--new', action='store_true')
-parser.add_argument('-time', action='store_true')
-parser.add_argument('-I', default=0.6, type=float)
-parser.add_argument('-mcz', default=30, type=float)
-parser.add_argument('-td', default=0.03, type=float)
+    sky_locations = {
+        # "20": {
+        # "theta_S": np.pi / 4,
+        # "phi_S": 0,
+        # "theta_J": np.pi / 2,
+        # "phi_J": np.pi / 2
+        # },
+        "20": {
+        "theta_S": np.pi / 4,
+        "phi_S": 0,
+        "theta_J": 8*np.pi / 9,
+        "phi_J": np.pi / 4
+        },
+        "30": {
+        "theta_S": np.pi / 4,
+        "phi_S": 0,
+        "theta_J": 8*np.pi / 9,
+        "phi_J": np.pi / 4
+        },
+        "40": {
+        "theta_S": np.pi / 4,
+        "phi_S": 0,
+        "theta_J": 8*np.pi / 9,
+        "phi_J": np.pi / 4
+        },
+    }
 
-parser.add_argument('-t-S', default='pi/3', type=str)
-parser.add_argument('-p-S', default='pi/4', type=str)
-parser.add_argument('-t-J', default='pi/6', type=str)
-parser.add_argument('-p-J', default='pi/3', type=str)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-n', '--new', action='store_true')
+    parser.add_argument('-time', action='store_true')
+    parser.add_argument('-I', default=0.6, type=float)
+    parser.add_argument('-mcz', default=30, type=float)
+    parser.add_argument('-td', default=0.03, type=float)
 
-
-parser.add_argument('-o-bounds', type=float, nargs=2, default=[0, 5])
-parser.add_argument('-t-bounds', type=float, nargs=2, default=[0, 15])
-parser.add_argument('-resolution', type=int, nargs=2, default=[51, 151])
+    parser.add_argument('-t-S', default='pi/3', type=str)
+    parser.add_argument('-p-S', default='pi/4', type=str)
+    parser.add_argument('-t-J', default='pi/6', type=str)
+    parser.add_argument('-p-J', default='pi/3', type=str)
 
 
-args = parser.parse_args()
-mass = float(args.mcz)
-I = float(args.I)
-td = float(args.td)
-min_omega, max_omega = args.o_bounds
-min_theta, max_theta = args.t_bounds
-o_res, t_res = args.resolution
-
-sky_location = parse_sky_location(args.t_S, args.p_S, args.t_J, args.p_J)
-
-# test_minimization.py -n -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 11 41
-
-# test_minimization.py -n -mcz 20 -td 0.02 -resolution 101 101
-# test_minimization.py -n -mcz 20 -td 0.02 -resolution 101 101 -p-S pi/2
-# test_minimization.py -n -mcz 20 -td 0.02 -resolution 101 101 -p-S pi/2 -p-J pi
-
-# test_minimization.py -n -I 0.6 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
-
-# test_minimization.py -n -I 0.4 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    parser.add_argument('-o-bounds', type=float, nargs=2, default=[0, 5])
+    parser.add_argument('-t-bounds', type=float, nargs=2, default=[0, 15])
+    parser.add_argument('-resolution', type=int, nargs=2, default=[51, 151])
 
 
-# test_minimization.py -n -I 0.6 -mcz 40 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    args = parser.parse_args()
+    mass = float(args.mcz)
+    I = float(args.I)
+    td = float(args.td)
+    min_omega, max_omega = args.o_bounds
+    min_theta, max_theta = args.t_bounds
+    o_res, t_res = args.resolution
 
-# test_minimization.py -n -I 0.6 -mcz 20 -td 0.011 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
-# test_minimization.py -n -I 0.6 -mcz 20 -td 0.044 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    sky_location = parse_sky_location(args.t_S, args.p_S, args.t_J, args.p_J)
 
-# test_minimization.py -n -I 0.3 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
-# test_minimization.py -n -I 0.1 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
-# test_minimization.py -n -I 0 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    # test_minimization.py -n -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 11 41
 
-# test_minimization.py -n -I 0.6 -mcz 25 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
-# test_minimization.py -n -I 0.6 -mcz 30 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
-# test_minimization.py -n -I 0.6 -mcz 35 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    # test_minimization.py -n -mcz 20 -td 0.02 -resolution 101 101
+    # test_minimization.py -n -mcz 20 -td 0.02 -resolution 101 101 -p-S pi/2
+    # test_minimization.py -n -mcz 20 -td 0.02 -resolution 101 101 -p-S pi/2 -p-J pi
 
+    # test_minimization.py -n -I 0.6 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
 
-
-# test_minimization.py -n -mcz 20 -td 0.0622
-
-
-if args.time:
-    lens_params, NP_params, RP_params = set_to_location_class(
-            sky_location, lens_params_1, NP_params_1, RP_params_1
-        )
-    lens_params["I"] = I
-    lens_params["td"] = td
-    lens_params["mcz"] = mass * solar_mass
-    RP_params["mcz"] = mass * solar_mass
-
-    theta_arr = []
-    omega_arr = []
-    eps_arr = []
-    start = time.time()
-    eps, theta_best, omega_best = find_optimal_RP_mismatch(lens_params, RP_params, omega_bounds=(min_omega, max_omega), theta_bounds=(min_theta, max_theta))
-    end = time.time()
-    print((start - end) * 1000, "ms")
+    # test_minimization.py -n -I 0.4 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
 
 
-elif args.new:
-    lens_params, NP_params, RP_params = set_to_location_class(
-            sky_location, lens_params_1, NP_params_1, RP_params_1
-        )
-    
-    lens_params["I"] = I
-    lens_params["td"] = td
-    lens_params["mcz"] = mass * solar_mass
-    RP_params["mcz"] = mass * solar_mass
+    # test_minimization.py -n -I 0.6 -mcz 40 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
 
-    mismatch_dict = evaluate_mismatch_2D(RP_params, lens_params, ("omega_tilde", "theta_tilde"), ((min_omega, max_omega), (min_theta, max_theta)), (o_res, t_res))
-    omega_list = mismatch_dict["omega_tilde"]
-    theta_list = mismatch_dict["theta_tilde"]
-    eps_data = np.transpose(mismatch_dict["results"])
+    # test_minimization.py -n -I 0.6 -mcz 20 -td 0.011 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    # test_minimization.py -n -I 0.6 -mcz 20 -td 0.044 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
 
-    omega_data, theta_data = np.meshgrid(omega_list, theta_list)
-    
-    data = {}
-    data["omega_matrix"] = omega_data
-    data["theta_matrix"] = theta_data
-    data["epsilon_matrix"] = eps_data
-    data["s_params"] = lens_params
-    data["t_params"] = RP_params
+    # test_minimization.py -n -I 0.3 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    # test_minimization.py -n -I 0.1 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    # test_minimization.py -n -I 0 -mcz 20 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
 
-    folder = "./output/"
+    # test_minimization.py -n -I 0.6 -mcz 25 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    # test_minimization.py -n -I 0.6 -mcz 30 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
+    # test_minimization.py -n -I 0.6 -mcz 35 -td 0.022 -o-bounds 3 4 -t-bounds 6 10 -resolution 101 101
 
-    filename = folder + "mcz{mcz}_td{td}_I{I}_omega{omin}-{omax}_theta{tmin}-{tmax}_{xres}x{yres}_{loc}.pkl".format(mcz=mass, td=td, I=I, omin=min_omega, omax=max_omega, tmin=min_theta, tmax=max_theta, xres=o_res, yres=t_res, loc=str(sky_location))
 
-    with open(filename, "wb") as file:
-        pickle.dump(data, file)
 
-    create_contour_plot(data, mass, td)
-    # o_spacing = data["omega_matrix"][0, 1] - data["omega_matrix"][0, 0]
-    # t_spacing = data["theta_matrix"][1, 0] - data["theta_matrix"][0, 0]
-    # print(o_spacing, t_spacing)
-    # create_fft_plot(data, o_spacing, t_spacing)
+    # test_minimization.py -n -mcz 20 -td 0.0622
 
-else:
-    folder = "./output/"
-    filename = folder + "mcz{mcz}_td{td}_I{I}_omega{omin}-{omax}_theta{tmin}-{tmax}_{xres}x{yres}_{loc}.pkl".format(mcz=mass, td=td, I=I, omin=min_omega, omax=max_omega, tmin=min_theta, tmax=max_theta, xres=o_res, yres=t_res, loc=str(sky_location))
 
-    if(exists(filename)):
+    if args.time:
+        lens_params, NP_params, RP_params = set_to_location_class(
+                sky_location, lens_params_1, NP_params_1, RP_params_1
+            )
+        lens_params["I"] = I
+        lens_params["td"] = td
+        lens_params["mcz"] = mass * solar_mass
+        RP_params["mcz"] = mass * solar_mass
 
-        with open(filename, "rb") as file:
-            data = pickle.load(file)
-        lens_params = data["s_params"]
-        RP_params = data["t_params"]
-        print("creating contour")
+        theta_arr = []
+        omega_arr = []
+        eps_arr = []
+        start = time.time()
+        eps, theta_best, omega_best = find_optimal_RP_mismatch(lens_params, RP_params, omega_bounds=(min_omega, max_omega), theta_bounds=(min_theta, max_theta))
+        end = time.time()
+        print((start - end) * 1000, "ms")
+
+
+    elif args.new:
+        lens_params, NP_params, RP_params = set_to_location_class(
+                sky_location, lens_params_1, NP_params_1, RP_params_1
+            )
+        
+        lens_params["I"] = I
+        lens_params["td"] = td
+        lens_params["mcz"] = mass * solar_mass
+        RP_params["mcz"] = mass * solar_mass
+
+        mismatch_dict = evaluate_mismatch_2D(RP_params, lens_params, ("omega_tilde", "theta_tilde"), ((min_omega, max_omega), (min_theta, max_theta)), (o_res, t_res))
+        omega_list = mismatch_dict["omega_tilde"]
+        theta_list = mismatch_dict["theta_tilde"]
+        eps_data = np.transpose(mismatch_dict["results"])
+
+        omega_data, theta_data = np.meshgrid(omega_list, theta_list)
+        
+        data = {}
+        data["omega_matrix"] = omega_data
+        data["theta_matrix"] = theta_data
+        data["epsilon_matrix"] = eps_data
+        data["s_params"] = lens_params
+        data["t_params"] = RP_params
+
+        folder = "./output/"
+
+        filename = folder + "mcz{mcz}_td{td}_I{I}_omega{omin}-{omax}_theta{tmin}-{tmax}_{xres}x{yres}_{loc}.pkl".format(mcz=mass, td=td, I=I, omin=min_omega, omax=max_omega, tmin=min_theta, tmax=max_theta, xres=o_res, yres=t_res, loc=str(sky_location))
+
+        with open(filename, "wb") as file:
+            pickle.dump(data, file)
+
         create_contour_plot(data, mass, td)
-
         # o_spacing = data["omega_matrix"][0, 1] - data["omega_matrix"][0, 0]
         # t_spacing = data["theta_matrix"][1, 0] - data["theta_matrix"][0, 0]
         # print(o_spacing, t_spacing)
         # create_fft_plot(data, o_spacing, t_spacing)
+
     else:
-        for mass in [20, 30, 40]:
-            data = load_Tien_data(mass)
-            sky_location = sky_locations[str(mass)]
+        folder = "./output/"
+        filename = folder + "mcz{mcz}_td{td}_I{I}_omega{omin}-{omax}_theta{tmin}-{tmax}_{xres}x{yres}_{loc}.pkl".format(mcz=mass, td=td, I=I, omin=min_omega, omax=max_omega, tmin=min_theta, tmax=max_theta, xres=o_res, yres=t_res, loc=str(sky_location))
 
-            lens_params, NP_params, RP_params = set_to_location_class(
-                sky_location, lens_params_1, NP_params_1, RP_params_1
-            )
+        if(exists(filename)):
 
-            lens_params["I"] = 0.5
-            td = 0.03
-
+            with open(filename, "rb") as file:
+                data = pickle.load(file)
+            lens_params = data["s_params"]
+            RP_params = data["t_params"]
+            print("creating contour")
             create_contour_plot(data, mass, td)
+
+            # o_spacing = data["omega_matrix"][0, 1] - data["omega_matrix"][0, 0]
+            # t_spacing = data["theta_matrix"][1, 0] - data["theta_matrix"][0, 0]
+            # print(o_spacing, t_spacing)
+            # create_fft_plot(data, o_spacing, t_spacing)
+        else:
+            for mass in [20, 30, 40]:
+                data = load_Tien_data(mass)
+                sky_location = sky_locations[str(mass)]
+
+                lens_params, NP_params, RP_params = set_to_location_class(
+                    sky_location, lens_params_1, NP_params_1, RP_params_1
+                )
+
+                lens_params["I"] = 0.5
+                td = 0.03
+
+                create_contour_plot(data, mass, td)

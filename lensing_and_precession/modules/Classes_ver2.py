@@ -56,8 +56,6 @@ class LensingBase:
         self.M_Lz = params["MLz"]
         self.y = params["y"]
 
-        # print(params)
-
         self.cache = {}
 
     def total_mass(self):
@@ -421,8 +419,9 @@ class PrecessingV2:
         cos_alpha = (
             (1 + np.cos(self.theta_S) ** 2) * np.cos(2 * self.phi_S) / (2 * C_amp)
         )
+        alpha = np.arctan2(sin_alpha, cos_alpha)
 
-        # define tan_psi
+        # compute psi robustly with atan2 to avoid singular tan when denominator ~ 0
         num_psi = (
             np.sin(self.theta_LJ(f))
             * (
@@ -439,26 +438,19 @@ class PrecessingV2:
             )
             + np.cos(self.theta_LJ(f)) * sin_i_JN * sin_o_XH
         )
-        if self.phi_S == self.phi_J:
-            if self.theta_S == self.theta_J:
-                tan_psi = np.tan(self.phi_LJ(f))
-            else:
-                tan_psi = num_psi / den_psi
-
+        if self.phi_S == self.phi_J and self.theta_S == self.theta_J:
+            psi = self.phi_LJ(f)
         else:
-            tan_psi = num_psi / den_psi
+            psi = np.arctan2(num_psi, den_psi)
 
         # if den_psi.all() == 0:  # True for face-on and theta_tilde = 0
         #     if self.theta_tilde == 0:  # WRONG!!! Refer to Eq A14 in Taman's paper!
         #         return C_amp, 0, -1
 
-        # define  2 * Psi + alpha
-        sin_2pa = (2 * cos_alpha * tan_psi + sin_alpha * (1 - (tan_psi) ** 2)) / (
-            1 + (tan_psi) ** 2
-        )
-        cos_2pa = (cos_alpha * (1 - (tan_psi) ** 2) - 2 * sin_alpha * tan_psi) / (
-            1 + (tan_psi) ** 2
-        )
+        # define  2 * Psi + alpha using direct sin/cos for numerical stability
+        ang = 2.0 * psi + alpha
+        sin_2pa = np.sin(ang)
+        cos_2pa = np.cos(ang)
 
         return C_amp, sin_2pa, cos_2pa
 
@@ -662,18 +654,14 @@ class PrecessingV2:
         # EXPANDED THRESHOLD: catch near-singularities before they cause spikes
         # When |LdotN| is close to 1, the denominator (1 - LdotN²) → 0
         # causing numerical explosions. Increase threshold to 1e-3 to catch earlier.
-        if np.abs(np.abs(LdotN) - 1) < 1e-3:
+        if np.abs(np.abs(LdotN) - 1) < NEAR_ZERO_THRESHOLD:
             # NOT face-on & STILL precessing, when L and N are aligned at some point in the precession cycle
             # very rare, L aligns with N only ONCE as it spirals out --> blows up???
             # a coordinate singularity!!!
             return 0
         
         # Generic (non face-on) expression
-        # Add additional safety clamp on the denominator
         denominator = 1 - LdotN**2
-        # If denominator gets too small despite threshold check, clamp it
-        if np.abs(denominator) < 1e-6:
-            return 0
         
         # Base term (Apostolatos 1994, Eq. A18)
         base = (
@@ -770,39 +758,10 @@ class PrecessingV2:
         # Compute phase with validation
         delta_phi = self.phase_delta_phi(f)
         
-        # Check for numerical issues in phase calculation
-        if np.any(~np.isfinite(delta_phi)):
-            # Log warning but continue with cleaned values
-            import warnings
-            warnings.warn(
-                f"NaN/Inf detected in phase_delta_phi at omega={self.omega_tilde:.3f}, "
-                f"theta={self.theta_tilde:.3f}. Replacing with interpolated values."
-            )
-            # Allow disabling interpolation via environment variable for debugging
-            interp_env = os.getenv("GW_INTERP_NAN", "1").strip().lower()
-            disable_interp = interp_env in {"0", "false", "no"}
-
-            if disable_interp:
-                # When disabled, do not smooth over NaNs. Replace all non-finite with 0
-                # to avoid downstream crashes but preserve a visible artifact.
-                # This helps identify problematic regions without hiding them.
-                delta_phi = np.where(np.isfinite(delta_phi), delta_phi, 0.0)
-            else:
-                # Replace non-finite values with linear interpolation
-                mask = np.isfinite(delta_phi)
-                if np.any(mask):
-                    delta_phi = np.interp(
-                        np.arange(len(delta_phi)),
-                        np.arange(len(delta_phi))[mask],
-                        delta_phi[mask]
-                    )
-                else:
-                    # All values bad - use zeros as fallback
-                    delta_phi = np.zeros_like(delta_phi)
-        
         strain = self.amplitude(f) * np.exp(
             1j * (self.Psi(f) - self.phase_phi_P(f) - 2 * delta_phi)
         )
+
         if frequencySeries:
             return FrequencySeries(strain, delta_f)
         
@@ -894,5 +853,4 @@ class Precessing(PrecessingV2):
 
         if results:
             return results
-        raise RuntimeError(f"All solve_ivp methods failed: {failures}")
         raise RuntimeError(f"All solve_ivp methods failed: {failures}")
