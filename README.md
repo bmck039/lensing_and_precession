@@ -9,6 +9,8 @@ We investigate various parameters governing regular precession, including the pr
 
 Employing match-filtering analysis and various `PyCBC` packages, we quantify the mismatch and apply the Lindblom criterion to establish discernibility conditions for waveforms. Our study explores the parameter space to understand waveform distinguishability between regular precession and lensing, offering insights into the signal-to-noise requirement for GW detectors to effectively discern these waveforms.
 
+Much of this code was taken from [here](https://github.com/fairytien/lensing_and_precession/tree/main) and expanded upon. 
+
 ## Getting started
 
 ### Installation
