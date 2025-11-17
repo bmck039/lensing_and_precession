@@ -240,3 +240,6 @@ pyrightconfig.json
 
 /.*
 *.code-workspace
+*.egg-info
+*.log
+*.pyc
