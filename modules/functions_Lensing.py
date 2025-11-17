@@ -2,7 +2,7 @@ import numpy as np
 
 error_handler = np.seterr(invalid="raise")
 from pycbc.types import FrequencySeries
-from modules.default_params_ver2 import *
+from lensing_and_precession.modules.default_params_ver2 import *
 
 NEAR_ZERO_THRESHOLD = 1e-8
 

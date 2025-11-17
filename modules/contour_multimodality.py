@@ -4,7 +4,7 @@
 
 
 # import py scripts
-from modules.contours_ver2 import *
+from lensing_and_precession.modules.contours_ver2 import *
 
 # import libraries
 from scipy.optimize import minimize

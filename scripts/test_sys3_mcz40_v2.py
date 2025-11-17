@@ -7,18 +7,15 @@ and compare behavior against the default Precessing implementation.
 - Optional reduced gamma grid for speed (gamma_points=21)
 - Prints SHGO vs. grid minima (both evaluated with PrecessingV2)
 """
-import sys
-sys.path.insert(0, "./lensing_and_precession/")
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from scipy.optimize import shgo
 
-from modules.default_params_ver2 import *
-from modules.Classes_ver2 import PrecessingV2
-from helper_classes import *
-from helper_functions import evaluate_mismatch, evaluate_mismatch_2D, set_to_location_class
+from lensing_and_precession.modules.default_params_ver2 import *
+from lensing_and_precession.modules.Classes_ver2 import PrecessingV2
+from scripts.helper_classes import *
+from scripts.helper_functions import evaluate_mismatch, evaluate_mismatch_2D, set_to_location_class
 
 # System 3 (Taman random) parameters
 sky_location = {

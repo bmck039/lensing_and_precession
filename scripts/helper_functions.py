@@ -1,24 +1,17 @@
-import sys
-sys.path.insert(0, "./lensing_and_precession/")
+from lensing_and_precession.modules.Classes_ver2 import *
+from lensing_and_precession.modules.functions_ver2 import *
+from lensing_and_precession.modules.functions_Precessing import *
+from lensing_and_precession.modules.default_params_ver2 import solar_mass
+from scripts.multithreading import evaluate_multithread
 
-from modules.Classes_ver2 import *
-from modules.functions_ver2 import *
-from modules.functions_Precessing import *
-from modules.default_params_ver2 import solar_mass
-from modules.multithreading import evaluate_multithread
+from scripts.helper_classes import *
 
-from helper_classes import *
 
-import copy
 from simpleeval import simple_eval
 from scipy.optimize import Bounds, shgo
 from tqdm import tqdm
-import time
-
 import functools
-
 import numpy as np
-import matplotlib.pyplot as plt
 
 def parse_sky_location(ts, ps, tj, pj):
     sky_location = {}

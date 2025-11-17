@@ -3,12 +3,9 @@
 Test script to reproduce sys3, mcz=40 contour and compare with reference.
 This will help diagnose where mismatches are coming from.
 """
-import sys
-sys.path.insert(0, "./lensing_and_precession/")
-
-from modules.default_params_ver2 import *
-from helper_classes import *
-from helper_functions import *
+from lensing_and_precession.modules.default_params_ver2 import *
+from scripts.helper_classes import *
+from scripts.helper_functions import *
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm

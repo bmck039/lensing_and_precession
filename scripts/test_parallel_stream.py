@@ -2,10 +2,9 @@
 """Minimal streaming parallel test for evaluate_multithread.
 Run to verify no deadlock and progress advances.
 """
-import sys, time, math
-sys.path.insert(0, "./lensing_and_precession/")
+import time, math
 
-from helper_functions import evaluate_multithread
+from scripts.helper_functions import evaluate_multithread
 
 # Simple CPU-bound function (simulate heavier work)
 def heavy(x, y):

@@ -2,15 +2,12 @@
 """Compute sys3 contour with fixed gamma_P to isolate source of ribbed artifacts.
 Runs multiple contours for a small set of fixed gamma values and saves plots.
 """
-import sys
-sys.path.insert(0, "./lensing_and_precession/")
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-from modules.default_params_ver2 import *
-from helper_functions import evaluate_mismatch_2D, set_to_location_class
+from lensing_and_precession.modules.default_params_ver2 import *
+from scripts.helper_functions import evaluate_mismatch_2D, set_to_location_class
 
 
 def main():

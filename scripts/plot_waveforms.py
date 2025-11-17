@@ -1,17 +1,13 @@
-import sys
-
-sys.path.insert(0, "./lensing_and_precession/")
-
 import matplotlib.pyplot as plt
 import argparse
 
-from modules.Classes_ver2 import *
-from modules.functions_ver2 import *
-from modules.functions_Precessing import *
-from modules.plot_utils import *
+from lensing_and_precession.modules.Classes_ver2 import *
+from lensing_and_precession.modules.functions_ver2 import *
+from lensing_and_precession.modules.functions_Precessing import *
+from lensing_and_precession.modules.plot_utils import *
 
-from helper_classes import *
-from helper_functions import *
+from scripts.helper_classes import *
+from scripts.helper_functions import *
 
 # Get lens_params
 

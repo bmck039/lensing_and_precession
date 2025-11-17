@@ -3,12 +3,9 @@
 Diagnostic test to check if multiprocessing works correctly.
 This will help identify pickling or deadlock issues.
 """
-import sys
-sys.path.insert(0, "./lensing_and_precession/")
-
-from modules.default_params_ver2 import *
-from helper_classes import *
-from helper_functions import *
+from lensing_and_precession.modules.default_params_ver2 import *
+from scripts.helper_classes import *
+from scripts.helper_functions import *
 import numpy as np
 import concurrent.futures
 
@@ -24,7 +21,7 @@ def test_with_params(t_params, s_params, omega, theta):
 def test_mismatch_single_point(t_params, s_params, omega, theta):
     """Test a single mismatch calculation."""
     try:
-        from helper_functions import evaluate_mismatch
+        from scripts.helper_functions import evaluate_mismatch
         t_copy = t_params.copy()
         t_copy["omega_tilde"] = omega
         t_copy["theta_tilde"] = theta

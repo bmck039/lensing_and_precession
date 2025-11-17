@@ -7,7 +7,7 @@
 # !{sys.executable} -m pip install pycbc ligo-common --no-cache-dir
 
 # import py scripts
-from modules.functions_ver1 import *
+from lensing_and_precession.modules.functions_ver1 import *
 
 # import modules
 from pycbc.filter import (

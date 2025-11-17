@@ -4,7 +4,7 @@
 
 
 # import py scripts
-from modules.contours_ver1 import *
+from lensing_and_precession.modules.contours_ver1 import *
 
 
 #######################
