@@ -13,7 +13,7 @@ Employing match-filtering analysis and various `PyCBC` packages, we quantify the
 
 ### Installation
 
-This project requires [`lalsuite`](https://pypi.org/project/lalsuite/) and [`PyCBC`](https://pycbc.org). Note that PyCBC often fails to install via pip, so it's recommended to install dependencies and the package separately:
+This project requires [`lalsuite`](https://pypi.org/project/lalsuite/) and [`PyCBC`](https://pycbc.org). Note that PyCBC sometimes fails to install via pip.
 
 ```bash
 # Install the package in editable mode (recommended for development)
