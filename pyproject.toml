@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lensing-and-precession"
+version = "0.1.0"
+description = "Distinguishing regularly precessing and lensed gravitational waveforms"
+readme = "lensing_and_precession/README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Ben McKallip" },
+  { name = "Tien Nguyen" },
+  { name = "Tamanjyot Singh" },
+  { name = "Michael Kesden" },
+  { name = "Lindsay King" }
+]
+license = { text = "MIT" }
+dependencies = [
+  "numpy>=2.0",
+  "scipy>=1.10",
+  "matplotlib>=3.5",
+  "tqdm>=4.60",
+  "h5py>=3.0",
+  "lalsuite>=7.0",
+  "PyCBC>=2.0",
+  "astropy>=5.0",
+  "simpleeval>=0.9",
+  "ipywidgets>=8.0",
+]
+
+[project.optional-dependencies]
+# PyCBC often fails to install from pip, so make it optional
+# Install manually with: pip install PyCBC
+pycbc = ["PyCBC>=2.0"]
+# Optional visualization and specialized libraries
+extras = ["mpld3>=0.5", "pykerr>=0.1", "seaborn", "pandas"]
+# JAX-based acceleration (for jit_helper.py)
+jax = ["jax", "equinox", "diffrax"]
+
+[tool.setuptools.packages.find]
+# Include both main package and helper scripts package
+include = ["lensing_and_precession*", "scripts*"]
+# Optionally exclude data/output/large folders from wheels
+exclude = ["Figures*", "jupyter*", "output*", "sbatch*", "sbatch_outputs*", "__pycache__*"]
+
+[project.scripts]
+calc-mcz-vs-td = "scripts.calc_mcz_vs_td:main"
+plot-waveforms = "scripts.plot_waveforms:main"
+convergence-test-delta-phi = "scripts.convergence_test_for_delta_phi:main"
+test-minimization = "scripts.test_minimization:main"
+
+[tool.setuptools.package-data]
+"*" = ["*.md"]

@@ -2,6 +2,7 @@ from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 import numpy as np
 from matplotlib import cm
+import matplotlib.pyplot as plt
 import pickle
 import argparse
 from os.path import exists
@@ -89,8 +90,7 @@ def load_Tien_data(mass):
         data = pickle.load(f)
     return data
 
-if __name__ == "__main__":
-
+def main():
     sky_locations = {
         # "20": {
         # "theta_S": np.pi / 4,
@@ -260,3 +260,6 @@ if __name__ == "__main__":
                 td = 0.03
 
                 create_contour_plot(data, mass, td)
+
+if __name__ == "__main__":
+    main()

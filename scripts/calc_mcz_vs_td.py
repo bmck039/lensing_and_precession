@@ -84,7 +84,7 @@ def create_contour(filename, plt, zlabel=r"$\min_{\~\theta, \~\Omega, \gamma_P} 
         pltName = "./Figures/" + "omega_best_" + filename[9:-3] + "png"
         plt.savefig(pltName)
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-NP', action='store_true')
     # parser.add_argument('-graph', action="store_true")
@@ -275,4 +275,6 @@ if __name__ == "__main__":
             create_contour(filename, plt, zlabel=r"$\epsilon(\~h_{\rm L}, \~h_{\rm NP})$")
         else:
             create_contour(filename, plt)
-        
+
+if __name__ == "__main__":
+    main()

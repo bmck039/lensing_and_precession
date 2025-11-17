@@ -1,0 +1,5 @@
+[console_scripts]
+calc-mcz-vs-td = scripts.calc_mcz_vs_td:main
+convergence-test-delta-phi = scripts.convergence_test_for_delta_phi:main
+plot-waveforms = scripts.plot_waveforms:main
+test-minimization = scripts.test_minimization:main

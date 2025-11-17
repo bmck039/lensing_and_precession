@@ -1,3 +1,33 @@
+Metadata-Version: 2.4
+Name: lensing-and-precession
+Version: 0.1.0
+Summary: Distinguishing regularly precessing and lensed gravitational waveforms
+Author: Ben McKallip, Tien Nguyen, Tamanjyot Singh, Michael Kesden, Lindsay King
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=2.0
+Requires-Dist: scipy>=1.10
+Requires-Dist: matplotlib>=3.5
+Requires-Dist: tqdm>=4.60
+Requires-Dist: h5py>=3.0
+Requires-Dist: lalsuite>=7.0
+Requires-Dist: PyCBC>=2.0
+Requires-Dist: astropy>=5.0
+Requires-Dist: simpleeval>=0.9
+Requires-Dist: ipywidgets>=8.0
+Provides-Extra: pycbc
+Requires-Dist: PyCBC>=2.0; extra == "pycbc"
+Provides-Extra: extras
+Requires-Dist: mpld3>=0.5; extra == "extras"
+Requires-Dist: pykerr>=0.1; extra == "extras"
+Requires-Dist: seaborn; extra == "extras"
+Requires-Dist: pandas; extra == "extras"
+Provides-Extra: jax
+Requires-Dist: jax; extra == "jax"
+Requires-Dist: equinox; extra == "jax"
+Requires-Dist: diffrax; extra == "jax"
+
 # Distinguishing regularly precessing and lensed gravitational waveforms
 
 ## Description
@@ -20,10 +50,7 @@ This project requires [`lalsuite`](https://pypi.org/project/lalsuite/) and [`PyC
 cd /path/to/summerResearch
 python -m pip install -e .
 
-```
-
-if PyCBC fails to install it can be installed with:
-```bash
+# If PyCBC isn't already installed, install it manually
 python -m pip install PyCBC
 ```
 
