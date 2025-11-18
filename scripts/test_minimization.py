@@ -118,23 +118,23 @@ def main():
         },
     }
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-n', '--new', action='store_true')
-    parser.add_argument('-time', action='store_true')
-    parser.add_argument('-I', default=0.6, type=float)
-    parser.add_argument('-mcz', default=30, type=float)
-    parser.add_argument('-td', default=0.03, type=float)
+    parser = argparse.ArgumentParser(
+        description="Test minimization routines for waveform mismatch."
+    )
+    parser.add_argument('-n', '--new', action='store_true', help='Use new minimization routine')
+    parser.add_argument('-time', action='store_true', help='Time the minimization process')
+    parser.add_argument('-I', default=0.6, type=float, help='Inclination angle I (default: 0.6)')
+    parser.add_argument('-mcz', default=30, type=float, help='Chirp mass mcz (default: 30)')
+    parser.add_argument('-td', default=0.03, type=float, help='Time delay td (default: 0.03)')
 
-    parser.add_argument('-t-S', default='pi/3', type=str)
-    parser.add_argument('-p-S', default='pi/4', type=str)
-    parser.add_argument('-t-J', default='pi/6', type=str)
-    parser.add_argument('-p-J', default='pi/3', type=str)
+    parser.add_argument('-t-S', default='pi/3', type=str, help='Source theta_S (default: pi/3)')
+    parser.add_argument('-p-S', default='pi/4', type=str, help='Source phi_S (default: pi/4)')
+    parser.add_argument('-t-J', default='pi/6', type=str, help='Source theta_J (default: pi/6)')
+    parser.add_argument('-p-J', default='pi/3', type=str, help='Source phi_J (default: pi/3)')
 
-
-    parser.add_argument('-o-bounds', type=float, nargs=2, default=[0, 5])
-    parser.add_argument('-t-bounds', type=float, nargs=2, default=[0, 15])
-    parser.add_argument('-resolution', type=int, nargs=2, default=[51, 151])
-
+    parser.add_argument('-o-bounds', type=float, nargs=2, default=[0, 5], metavar=('MIN', 'MAX'), help='Bounds for omega (default: 0 5)')
+    parser.add_argument('-t-bounds', type=float, nargs=2, default=[0, 15], metavar=('MIN', 'MAX'), help='Bounds for theta (default: 0 15)')
+    parser.add_argument('-resolution', type=int, nargs=2, default=[51, 151], metavar=('OMEGA_RES', 'THETA_RES'), help='Resolution for omega and theta grid (default: 51 151)')
 
     args = parser.parse_args()
     mass = float(args.mcz)

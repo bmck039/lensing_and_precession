@@ -85,20 +85,22 @@ def create_contour(filename, plt, zlabel=r"$\min_{\~\theta, \~\Omega, \gamma_P} 
         plt.savefig(pltName)
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-NP', action='store_true')
+    parser = argparse.ArgumentParser(
+        description="Generate and plot mismatch contours for varying mcz and td."
+    )
+    parser.add_argument('-NP', action='store_true', help='Use non-precessing mode (NP)')
     # parser.add_argument('-graph', action="store_true")
-    parser.add_argument('-pbar', action="store_true")
-    parser.add_argument('-slice', nargs=2)
-    parser.add_argument('-I', type=float, default=0.6)
-    parser.add_argument('-m-bounds', type=float, nargs=2, default=[0.01, 90])
-    parser.add_argument('-td-bounds', type=float, nargs=2, default=[0.01, 0.1])
-    parser.add_argument('-resolution', type=int, nargs=2, default=[100, 100])
+    parser.add_argument('-pbar', action="store_true", help='Show progress bar during computation')
+    parser.add_argument('-slice', nargs=2, metavar=('MCZ', 'TD'), help='Plot a slice at given mcz and td values')
+    parser.add_argument('-I', type=float, default=0.6, help='Inclination angle I (default: 0.6)')
+    parser.add_argument('-m-bounds', type=float, nargs=2, default=[0.01, 90], metavar=('MIN', 'MAX'), help='Bounds for mcz (default: 0.01 90)')
+    parser.add_argument('-td-bounds', type=float, nargs=2, default=[0.01, 0.1], metavar=('MIN', 'MAX'), help='Bounds for td (default: 0.01 0.1)')
+    parser.add_argument('-resolution', type=int, nargs=2, default=[100, 100], metavar=('MCZ_RES', 'TD_RES'), help='Resolution for mcz and td grid (default: 100 100)')
 
-    parser.add_argument('-t-S', default='pi/3', type=str)
-    parser.add_argument('-p-S', default='pi/4', type=str)
-    parser.add_argument('-t-J', default='pi/6', type=str)
-    parser.add_argument('-p-J', default='pi/3', type=str)
+    parser.add_argument('-t-S', default='pi/3', type=str, help='Source theta_S (default: pi/3)')
+    parser.add_argument('-p-S', default='pi/4', type=str, help='Source phi_S (default: pi/4)')
+    parser.add_argument('-t-J', default='pi/6', type=str, help='Source theta_J (default: pi/6)')
+    parser.add_argument('-p-J', default='pi/3', type=str, help='Source phi_J (default: pi/3)')
 
     args = parser.parse_args()
     # calc_mcz_vs_td.py -pbar -I 0.3 -resolution 50 50

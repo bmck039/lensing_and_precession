@@ -23,12 +23,14 @@ def main():
         sky_location, lens_params_1, NP_params_1, RP_params_1
     )
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-I', type=float, default=0.6)
-    parser.add_argument('-m', type=float, default=20)
-    parser.add_argument('-td', type=float, default=0.02)
-    parser.add_argument('-omega', type=float, default=0)
-    parser.add_argument('-theta', type=float, default=0)
+    parser = argparse.ArgumentParser(
+        description="Plot waveform comparison for given parameters."
+    )
+    parser.add_argument('-I', type=float, default=0.6, help='Inclination angle I (default: 0.6)')
+    parser.add_argument('-m', type=float, default=20, help='Chirp mass mcz (default: 20)')
+    parser.add_argument('-td', type=float, default=0.02, help='Time delay td (default: 0.02)')
+    parser.add_argument('-omega', type=float, default=0, help='Omega tilde (default: 0)')
+    parser.add_argument('-theta', type=float, default=0, help='Theta tilde (default: 0)')
 
     # parser.add_argument('-optimize', action='store_true')
 

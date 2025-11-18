@@ -57,40 +57,43 @@ def Sn(f_arr, f_min=20, delta_f=0.25, frequencySeries=True):
         return FrequencySeries(Sn_val, delta_f=delta_f)
     return Sn_val
 
-def waveform_helper(lens_params, t_params, td, mcz):
-    lens_params["td"] = td
-    lens_params["mcz"] = mcz
-    t_params["mcz"] = mcz
-
-    l_s = get_gw(lens_params)["strain"]
-    ul_s = get_gw(t_params)["strain"]
-    l_s.resize(len(ul_s))
-
-    f = get_gw(lens_params)["f_array"]
-    psd = Sn(f)
-
     return ul_s, l_s, psd
 
-
-sky_location = {
-    "theta_S": np.pi / 3,
-    "phi_S": np.pi / 4,
-    "theta_J": np.pi / 6,
-    "phi_J": np.pi / 3
-}
 
 lens_params, NP_params, RP_params = set_to_location_class(
     sky_location, lens_params_1, NP_params_1, RP_params_1
 )
-
 lens_params["I"] = 0.6
-td = 0.019811962392478497
-
 data_unlensed, data_lensed, psd = waveform_helper(lens_params, NP_params, td, 15 * solar_mass)
-print(list(data_unlensed))
-print(list(data_lensed))
-print(list(psd))
-# data = (td_list, data_lensed, data_unlensed)
+def main():
+    parser = argparse.ArgumentParser(
+        description="Extract and print waveform and PSD data for given parameters."
+    )
+    parser.add_argument('-I', type=float, default=0.6, help='Inclination angle I (default: 0.6)')
+    parser.add_argument('-td', type=float, default=0.0198, help='Time delay td (default: 0.0198)')
+    parser.add_argument('-m', type=float, default=15, help='Chirp mass mcz (default: 15)')
+    args = parser.parse_args()
 
-# with open('data.pkl', 'wb') as file:
-#     pickle.dump(data, file)
+    sky_location = {
+        "theta_S": np.pi / 3,
+        "phi_S": np.pi / 4,
+        "theta_J": np.pi / 6,
+        "phi_J": np.pi / 3
+    }
+
+    lens_params, NP_params, RP_params = set_to_location_class(
+        sky_location, lens_params_1, NP_params_1, RP_params_1
+    )
+
+    lens_params["I"] = args.I
+    td = args.td
+    mcz = args.m * solar_mass
+
+    data_unlensed, data_lensed, psd = waveform_helper(lens_params, NP_params, td, mcz)
+    print(list(data_unlensed))
+    print(list(data_lensed))
+    print(list(psd))
+
+
+if __name__ == "__main__":
+    main()

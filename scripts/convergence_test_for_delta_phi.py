@@ -15,6 +15,17 @@ from scripts.helper_classes import *
 from scripts.helper_functions import *
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Test convergence of delta phi for different cutoff angles."
+    )
+    parser.add_argument('-I', type=float, default=0.6, help='Inclination angle I (default: 0.6)')
+    parser.add_argument('-td', type=float, default=0.022, help='Time delay td (default: 0.022)')
+    parser.add_argument('-m', type=float, default=20, help='Chirp mass mcz (default: 20)')
+    args = parser.parse_args()
+
+    I = args.I
+    td = args.td
+    mass = args.m
     sky_location = {
         "theta_S": np.pi / 3,
         "phi_S": np.pi / 4,

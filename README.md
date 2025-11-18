@@ -72,6 +72,80 @@ python -m scripts.calc_mcz_vs_td -pbar -I 0.6 -slice mcz 20
 python -m scripts.plot_waveforms -m 20 -td 0.022 -omega 3.8 -theta 8
 ```
 
+## Project layout
+
+- `lensing_and_precession/` — core Python package (waveform physics, plotting utils, defaults)
+	- `modules/` — main implementation modules
+- `scripts/` — command-line entry points and helper utilities
+- `Figures/` — generated plots and figures (outputs)
+- `output/` — generated data products (e.g., .pkl grids)
+- `jupyter/` and `lensing_and_precession/notebooks/` — exploratory notebooks
+- `pyproject.toml` — package configuration, dependencies, and CLI wiring
+- `README.md` — project background and scientific context
+
+## CLI reference
+
+Below are the exposed commands and their purpose. Use `-h` for the exact options supported by your local version.
+
+### calc-mcz-vs-td
+Computes mismatch across a 2D grid in chirp mass (mcz) and time delay (td), optionally optimizing RP parameters or evaluating an NP slice.
+
+- Key options:
+	- `-NP` — compute non-precessing mismatch instead of optimizing RP params
+	- `-pbar` — show progress bar during evaluation
+	- `-slice {mcz|td} VALUE` — 1D slice mode across td (for fixed mcz) or mcz (for fixed td)
+	- `-I FLOAT` — lens parameter I (dimensionless)
+	- `-m-bounds ML MU` — mcz bounds in solar masses
+	- `-td-bounds TL TU` — td bounds (seconds)
+	- `-resolution NX NY` — grid resolution for (td, mcz)
+	- `-t-S, -p-S, -t-J, -p-J` — sky location angles; supports `pi` expressions like `pi/3`
+
+- Outputs:
+	- `.pkl` data to `./output/`
+	- Contour plots to `./Figures/`
+
+Example:
+```
+calc-mcz-vs-td -pbar -I 0.6 -m-bounds 10 90 -td-bounds 0.02 0.07 -resolution 100 100
+```
+
+### plot-waveforms
+Plots lensed vs precessing (or NP/RP) waveform comparisons for a single configuration.
+
+- Key options:
+	- `-I FLOAT` — lens parameter I
+	- `-m FLOAT` — source chirp mass (solar masses)
+	- `-td FLOAT` — time delay (seconds)
+	- `-omega FLOAT` — template omega_tilde
+	- `-theta FLOAT` — template theta_tilde
+
+Example:
+```
+plot-waveforms -m 20 -td 0.022 -omega 3.8 -theta 8
+```
+
+### test-minimization
+Generates a mismatch grid and finds the SHGO/global minimum in (omega_tilde, theta_tilde) for a given (mcz, td, I) and sky location.
+
+- Key options:
+	- `-n/--new` — recompute the grid and save to `./output/`
+	- `-I FLOAT`, `-mcz FLOAT`, `-td FLOAT` — physical parameters
+	- `-o-bounds OL OU`, `-t-bounds TL TU` — lower and upper bounds for omega, theta grids
+	- `-resolution NO NT` — grid resolution (omega, theta)
+	- `-t-S, -p-S, -t-J, -p-J` — sky location angles
+
+### convergence-test-delta-phi
+Debug/diagnostic plotting to see phase stability vs an internal cutoff threshold.
+
+- No required options; the script writes a debugging plot (see code for the current fixed configuration).
+
+## Troubleshooting
+
+- PyCBC fails to install: install it after the main package using `python -m pip install PyCBC`.
+- `ModuleNotFoundError: ipywidgets`: install with `python -m pip install ipywidgets` or use the `extras` group.
+- Multiprocessing issues (BLAS/OpenMP): prefer the "spawn" start method in parallel helpers; avoid large thread counts in BLAS by setting environment variables like `OPENBLAS_NUM_THREADS=1` when using many processes.
+- Figures not appearing: ensure `./Figures/` exists and you have write permissions.
+
 ## Authors
 * Ben McKallip
 * Tien Nguyen
