@@ -7,10 +7,10 @@ Optionally set GW_INTERP_NAN=0 for raw phase diagnostics.
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from lensing_and_precession.modules.default_params_ver2 import *
-from lensing_and_precession.modules.functions_ver2 import mismatch
+from modules.default_params_ver2 import *
+from modules.functions_ver2 import mismatch
 from scripts.helper_functions import set_to_location_class
-from lensing_and_precession.modules.Classes_ver2 import Precessing
+from modules.Classes_ver2 import Precessing
 
 # Sky/location baseline
 sky_location = {

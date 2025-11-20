@@ -1,7 +1,7 @@
-from lensing_and_precession.modules.Classes_ver2 import *
-from lensing_and_precession.modules.functions_ver2 import *
-from lensing_and_precession.modules.functions_Precessing import *
-from lensing_and_precession.modules.default_params_ver2 import solar_mass
+from modules.Classes_ver2 import *
+from modules.functions_ver2 import *
+from modules.functions_Precessing import *
+from modules.default_params_ver2 import solar_mass
 from scripts.multithreading import evaluate_multithread
 
 from scripts.helper_classes import *

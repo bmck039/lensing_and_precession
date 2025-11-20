@@ -4,7 +4,7 @@
 
 
 # import py scripts
-from lensing_and_precession.modules.functions_ver2 import *
+from modules.functions_ver2 import *
 
 # import libraries
 from multiprocessing import Pool, cpu_count

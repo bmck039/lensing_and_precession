@@ -13,7 +13,7 @@ from matplotlib import cm
 from scipy.optimize import shgo
 
 from lensing_and_precession.modules.default_params_ver2 import *
-from lensing_and_precession.modules.Classes_ver2 import PrecessingV2
+from modules.Classes_ver2 import PrecessingV2
 from scripts.helper_classes import *
 from scripts.helper_functions import evaluate_mismatch, evaluate_mismatch_2D, set_to_location_class
 

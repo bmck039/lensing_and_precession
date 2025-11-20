@@ -2,10 +2,10 @@ import matplotlib.pyplot as plt
 import argparse
 import numpy as np
 
-from lensing_and_precession.modules.Classes_ver2 import *
-from lensing_and_precession.modules.functions_ver2 import *
-from lensing_and_precession.modules.functions_Precessing import *
-from lensing_and_precession.modules.plot_utils import *
+from modules.Classes_ver2 import *
+from modules.functions_ver2 import *
+from modules.functions_Precessing import *
+from modules.plot_utils import *
 
 from scripts.helper_classes import *
 from scripts.helper_functions import *

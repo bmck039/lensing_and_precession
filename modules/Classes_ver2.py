@@ -7,21 +7,35 @@
 # !{sys.executable} -m pip install pycbc ligo-common --no-cache-dir
 
 import numpy as np
+import os
 
 error_handler = np.seterr(invalid="raise")
+from warnings import warn
+from scipy.integrate import cumulative_trapezoid as integrate
+
 from scipy.integrate import odeint
+
 import scipy.special as sc
 import mpmath as mp
 from pycbc.types import FrequencySeries
 
+from scipy.integrate import solve_ivp
+from typing import Union, Sequence, Dict
+
 NEAR_ZERO_THRESHOLD = 1e-8
+
+
+def get_numerical_derivative(func, x0, dx = 0.01):
+    x1 = x0 + dx
+    y0 = func(x0)
+    y1 = func(x1)
+    return (y1 - y0) / dx
 
 ############################
 # Section 2: Lensing Class #
 ############################
 
-
-class Lensing:
+class LensingBase:
     def __init__(self, params):
         self.params = params
 
@@ -41,6 +55,8 @@ class Lensing:
         # lensed parameters
         self.M_Lz = params["MLz"]
         self.y = params["y"]
+
+        self.cache = {}
 
     def total_mass(self):
         """Total mass from chirp mass [seconds]"""
@@ -156,8 +172,39 @@ class Lensing:
         signal_I = term_1 * term_2 * term_3 * term_4
 
         return signal_I
+    
+    def F(self, f) -> np.complex128:
+        warn("Warning: amplification factor not implemented in LensingBase!")
+        return np.complex128(0)
 
-    def F(self, f):
+    def strain(self, f, delta_f=0.25, frequencySeries=True):
+        """lensed strain = unlensed strain * amplification factor
+        Args:
+            f (numpy array): frequency range
+            delta_f (float): interval length of frequency. Default at 0.25 Hz.
+            frequencySeries (bool): True for FrequencySeries. False otherwise.
+
+        Returns:
+            hL (numpy array): lensed strain
+        """
+        # cacheName = "strain" + str(f) + str(delta_f) + str(frequencySeries)
+        # if cacheName in self.cache: return self.cache[cacheName]
+
+        hL = self.hI(f) * self.F(f)
+
+        if frequencySeries:
+            # self.cache[cacheName] = FrequencySeries(hL, delta_f)
+            # return self.cache[cacheName]
+            return FrequencySeries(hL, delta_f)
+
+        # self.cache[cacheName] = hL
+        return hL
+
+class LensingPM(LensingBase):
+    def __init__(self, params):
+        super().__init__(params)
+    
+    def F(self, f) -> np.complex128:
         """PM amplification factor in exact form, equation 17 in Takahashi & Nakamura 2003"""
         self.w = 8 * np.pi * self.M_Lz * f
         x_m = 0.5 * (self.y + np.sqrt(self.y**2 + 4))
@@ -177,25 +224,7 @@ class Lensing:
 
         return F_val
 
-    def strain(self, f, delta_f=0.25, frequencySeries=True):
-        """lensed strain = unlensed strain * amplification factor
-        Args:
-            f (numpy array): frequency range
-            delta_f (float): interval length of frequency. Default at 0.25 Hz.
-            frequencySeries (bool): True for FrequencySeries. False otherwise.
-
-        Returns:
-            hL (numpy array): lensed strain
-        """
-        hL = self.hI(f) * self.F(f)
-
-        if frequencySeries:
-            return FrequencySeries(hL, delta_f)
-
-        return hL
-
-
-class LensingGeo(Lensing):
+class LensingGeo_PM(LensingBase):
     def __init__(self, params):
         super().__init__(params)
 
@@ -241,15 +270,34 @@ class LensingGeo(Lensing):
         ) * np.exp(2j * np.pi * f * self.td())
         return F_val
 
+class LensingGeo(LensingBase):
+    def __init__(self, params):
+        self.td_val = params["td"]
+        self.I_val = params["I"]
+        super().__init__(params)
+    
+    def F(self, f) -> np.complex128:
+        F_val = 1 - 1j * np.sqrt(self.I_val) * np.exp(2j * np.pi * f * self.td_val)
+        return F_val
+    
+    def td(self): return self.td_val
+
+    def I(self): return self.I_val
+
 
 ###############################
 # Section 3: Precessing Class #
 ###############################
 
 
-class Precessing:
+class PrecessingV2:
+
+    cutoff_threshold = 0
+
     def __init__(self, params):
         self.params = params
+
+        # self.solver = Kvaerno5()
 
         assert type(self.params == dict), "Parameters should be a dictionary"
 
@@ -271,9 +319,15 @@ class Precessing:
 
         # some converters/constants
 
+        self.cache = {}
+
+        self.LdotN_threshold = 0.0625 # found with convergence study. see convergence_test_for_delta_phi.py
         self.SOLMASS2SEC = 4.92624076 * 1e-6  # solar mass -> seconds
         self.GIGAPC2SEC = 1.02927125 * 1e17  # gigaparsec -> seconds
         self.FMIN = 20  # lower frequency of the detector sensitivity band [Hz]
+
+        # self.angle_diff = 0.01
+
 
     def total_mass(self):
         """Total mass from chirp mass [seconds]"""
@@ -285,7 +339,10 @@ class Precessing:
 
     def theta_LJ(self, f):
         """theta_LJ_new"""
-        return 0.1 * self.theta_tilde * (f / self.f_cut()) ** (1 / 3)
+        return (0.1 / (4 * self.eta)) * self.theta_tilde * (f / self.f_cut()) ** (1 / 3)
+    
+    def Omega_LJ(self, f):
+        return 1000 * self.omega_tilde * (f / self.f_cut())**(5/3) / (self.total_mass() / self.SOLMASS2SEC)
 
     def phi_LJ(self, f):
         """phi_LJ"""
@@ -362,8 +419,9 @@ class Precessing:
         cos_alpha = (
             (1 + np.cos(self.theta_S) ** 2) * np.cos(2 * self.phi_S) / (2 * C_amp)
         )
+        alpha = np.arctan2(sin_alpha, cos_alpha)
 
-        # define tan_psi
+        # compute psi robustly with atan2 to avoid singular tan when denominator ~ 0
         num_psi = (
             np.sin(self.theta_LJ(f))
             * (
@@ -380,26 +438,19 @@ class Precessing:
             )
             + np.cos(self.theta_LJ(f)) * sin_i_JN * sin_o_XH
         )
-        if self.phi_S == self.phi_J:
-            if self.theta_S == self.theta_J:
-                tan_psi = np.tan(self.phi_LJ(f))
-            else:
-                tan_psi = num_psi / den_psi
-
+        if self.phi_S == self.phi_J and self.theta_S == self.theta_J:
+            psi = self.phi_LJ(f)
         else:
-            tan_psi = num_psi / den_psi
+            psi = np.arctan2(num_psi, den_psi)
 
         # if den_psi.all() == 0:  # True for face-on and theta_tilde = 0
         #     if self.theta_tilde == 0:  # WRONG!!! Refer to Eq A14 in Taman's paper!
         #         return C_amp, 0, -1
 
-        # define  2 * Psi + alpha
-        sin_2pa = (2 * cos_alpha * tan_psi + sin_alpha * (1 - (tan_psi) ** 2)) / (
-            1 + (tan_psi) ** 2
-        )
-        cos_2pa = (cos_alpha * (1 - (tan_psi) ** 2) - 2 * sin_alpha * tan_psi) / (
-            1 + (tan_psi) ** 2
-        )
+        # define  2 * Psi + alpha using direct sin/cos for numerical stability
+        ang = 2.0 * psi + alpha
+        sin_2pa = np.sin(ang)
+        cos_2pa = np.cos(ang)
 
         return C_amp, sin_2pa, cos_2pa
 
@@ -416,6 +467,11 @@ class Precessing:
             * np.sqrt(4 * LdotN**2 * sin_2pa**2 + cos_2pa**2 * (1 + LdotN**2) ** 2)
         )
         return amp
+    
+    def freq_from_angle(self, mu):
+        cos_i_JN, sin_i_JN, cos_o_XH, sin_o_XH = self.precession_angles()
+        i_JN = np.atan2(sin_i_JN, cos_i_JN)
+        return self.f_cut() * np.pow((i_JN + mu) * 4 * self.eta / (0.1 * self.theta_tilde), 3) if self.theta_tilde != 0 else 0
 
     ### get the phase phi_P
     def phase_phi_P(self, f):
@@ -430,13 +486,153 @@ class Precessing:
     def f_dot(self, f):
         """df/dt from Cutler Flanagan 1994"""
         prefactor = (96 / 5) * np.pi ** (8 / 3) * self.mcz ** (5 / 3) * f ** (11 / 3)
-        return prefactor  # * (1 - (743/336 + (11/4) * self.eta) * (np.pi * self.total_mass() * f)**(2/3) + 4 * np.pi * (np.pi * self.total_mass() * f))
+        return prefactor # * (1 - (743/336 + (11/4) * self.eta) * (np.pi * self.total_mass() * f)**(2/3) + 4 * np.pi * (np.pi * self.total_mass() * f))
 
-    ### get the delta phi_P
-    def integrand_delta_phi(self, y, f):
-        """integrand for delta phi p (equations in Apostolatos 1994, and appendix of Evangelos in prep)"""
+    def get_outer_integrand(self, f):
         LdotN = self.LdotN(f)
         cos_i_JN, sin_i_JN, cos_o_XH, sin_o_XH = self.precession_angles()
+        f_dot = self.f_dot(f)
+        return ((LdotN / (1 - LdotN**2))
+                * (self.Omega_LJ(f)
+                * np.sin(self.theta_LJ(f))
+                * (
+                    np.cos(self.theta_LJ(f)) * sin_i_JN * np.sin(self.phi_LJ(f))
+                    - np.sin(self.theta_LJ(f)) * cos_i_JN
+                ) / f_dot 
+                - (self.theta_LJ(f) / (3 * f)) * np.cos(self.phi_LJ(f)) * sin_i_JN))
+ 
+    def beta(self, f):
+        cos_i_JN, sin_i_JN, cos_o_XH, sin_o_XH = self.precession_angles()
+        f_dot = self.f_dot(f)
+
+        return self.theta_LJ(f) * f_dot / (3 * f * sin_i_JN * self.Omega_LJ(f)) if self.omega_tilde != 0 else 0
+
+    def get_const_inner_term(self, f):
+        cos_i_JN, sin_i_JN, cos_o_XH, sin_o_XH = self.precession_angles()
+        f_dot = self.f_dot(f)
+        beta = self.beta(f)
+        return -0.5 * self.Omega_LJ(f) * cos_i_JN * ((1 + 2*np.pow(beta, 2))/(1 + np.pow(beta, 2))) / f_dot
+    
+    def is_small_angle(self, f):
+        LdotN = self.LdotN(f)
+        return np.abs(np.abs(LdotN) - 1) < NEAR_ZERO_THRESHOLD
+    
+    def get_coeff_matrix(self, x0, x1, x2):
+        return [[np.pow(x0, 4), np.pow(x0, 3), np.pow(x0, 2), x0, 1],
+                [np.pow(x1, 4), np.pow(x1, 3), np.pow(x1, 2), x1, 1],
+                [np.pow(x2, 4), np.pow(x2, 3), np.pow(x2, 2), x2, 1],
+                [4*np.pow(x0, 3), 3*np.pow(x0, 2), 2*x0, 1, 0],
+                [4*np.pow(x2, 3), 3*np.pow(x2, 2), 2*x2, 1, 0],
+                ]
+
+    def get_small_angle_approx(self, f):
+        cos_i_JN, sin_i_JN, cos_o_XH, sin_o_XH = self.precession_angles()
+
+        f = np.asarray(f)
+
+        f_al = self.freq_from_angle(0)
+        # delta_f = f - f_al
+        # f_dot = self.f_dot(f_al)
+        # beta = self.beta(f_al)
+        # theta_LJ = self.theta_LJ(f_al)
+        # cot_i_JN = cos_i_JN / sin_i_JN
+        # csc_i_JN = 1 / sin_i_JN
+        # tan_i_JN = sin_i_JN / cos_i_JN
+        y1 = self.get_const_inner_term(f_al)
+
+        if(f.size == 1):
+            if(self.is_small_angle(f)): return y1
+            else: return 0
+
+
+        small_f_indices = np.nonzero(np.where(self.is_small_angle(f), f, 0))[0]
+
+        if(len(small_f_indices) == 0): return 0
+        
+        if(len(small_f_indices) == 1): return y1
+
+        f_lower = f[small_f_indices[0]]
+        f_upper = f[small_f_indices[-1]]
+
+        y0 = self.get_outer_integrand(f_lower)
+        y2 = self.get_outer_integrand(f_upper)
+
+        deriv_0 = get_numerical_derivative(self.get_outer_integrand, f_lower)
+        deriv_2 = get_numerical_derivative(self.get_outer_integrand, f_upper)
+
+        coeff = self.get_coeff_matrix(f_lower, f_al, f_upper)
+
+        result_arr = [y0, y1, y2, deriv_0, deriv_2]
+
+        polynomial_coeff = np.linalg.solve(coeff, result_arr)
+        f_list = np.asarray([np.pow(f, 4), np.pow(f, 3), np.pow(f, 2), f, np.ones_like(f)])
+        f_list = np.transpose(f_list)
+        return np.dot(f_list, polynomial_coeff)
+
+
+    ### get the delta phi_P
+    def integrand_delta_phi(self, f):
+        """integrand for delta phi p (equations in Apostolatos 1994, and appendix of Evangelos in prep)"""
+
+        # if self.theta_tilde == 0:  # non-precessing
+        #     integrand_delta_phi = 0
+        #     # not necessary to include this case, but just in case, check equations 17, 18a, A18 in Evangelos
+
+        # if (
+        #     np.abs(1 - cos_i_JN) < NEAR_ZERO_THRESHOLD
+        # ):  # face-on (precessing & non-precessing)
+        #     integrand_delta_phi = -Omega_LJ * np.cos(self.theta_LJ(f)) / f_dot
+
+        # elif 1 - LdotN < self.cutoff_threshold: # verified with convergence study
+        #     integrand_delta_phi = 0
+
+        # else:
+        #     integrand_delta_phi = (
+        #         (LdotN / (1 - LdotN**2))
+        #         * Omega_LJ
+        #         * np.sin(self.theta_LJ(f))
+        #         * (
+        #             np.cos(self.theta_LJ(f)) * sin_i_JN * np.sin(self.phi_LJ(f))
+        #             - np.sin(self.theta_LJ(f)) * cos_i_JN
+        #         )
+        #         / f_dot
+        #     )
+
+        cos_i_JN, sin_i_JN, cos_o_XH, sin_o_XH = self.precession_angles()
+        f_dot = self.f_dot(f)
+        
+        return np.where(
+            np.abs(1 - cos_i_JN) < NEAR_ZERO_THRESHOLD,
+            -self.Omega_LJ(f) * np.cos(self.theta_LJ(f)) / f_dot,
+            np.where(
+                self.is_small_angle(f),
+                self.get_const_inner_term(f),
+                self.get_outer_integrand(f)
+            )
+        )
+
+    def phase_delta_phi(self, f):
+        #v2:
+        integral = odeint(self.integrand_delta_phi_v2, 0, f)
+        return np.squeeze(integral)
+
+        #v3:
+        # integrand = self.integrand_delta_phi(f)
+
+        # I = integrate(integrand, x=f, initial=0)
+        # return I
+
+        #v4:
+        # jax_integral = phase_delta_phi_jit(f, self.omega_tilde, self.theta_tilde, self.gamma_P, self.mcz, self.eta, self.phi_J, self.phi_S, self.theta_J, self.theta_S, self.t_c, self.phi_c, 0.01, solver=self.solver)
+        # return jax.numpy.asarray(jax_integral)
+
+    def integrand_delta_phi_v2(self, y, f):
+        """integrand for delta phi p (equations in Apostolatos 1994, and appendix of Evangelos in prep)"""
+        # Precompute reused quantities
+        LdotN = self.LdotN(f)
+        cos_i_JN, sin_i_JN, *_ = self.precession_angles()
+        theta_LJ = self.theta_LJ(f)
+        phi_LJ = self.phi_LJ(f)
         f_dot = self.f_dot(f)
 
         Omega_LJ = (
@@ -446,39 +642,45 @@ class Precessing:
             / (self.total_mass() / self.SOLMASS2SEC)
         )
 
-        # if self.theta_tilde == 0:  # non-precessing
-        #     integrand_delta_phi = 0
-        #     # not necessary to include this case, but just in case, check equations 17, 18a, A18 in Evangelos
+        if self.theta_tilde == 0:  # non-precessing
+            return 0
+        # not necessary to include this case, but just in case, check equations 17, 18a, A18 in Evangelos
 
-        if (
-            np.abs(1 - cos_i_JN) < NEAR_ZERO_THRESHOLD
-        ):  # face-on (precessing & non-precessing)
-            integrand_delta_phi = -Omega_LJ * np.cos(self.theta_LJ(f)) / f_dot
+        # Face-on case (precessing & non-precessing)
+        if np.abs(1 - np.abs(cos_i_JN)) < NEAR_ZERO_THRESHOLD:
+            return -Omega_LJ * np.cos(theta_LJ) / f_dot
 
-        # elif LdotN == 1: # TODO: check this case
-        #     # NOT face-on & STILL precessing, when L and N are aligned at some point in the precession cycle
-        #     # very rare, L aligns with N only ONCE as it spirals out --> blows up???
-        #     # a coordinate singularity!!!
-        #     integrand_delta_phi = 0
-
-        else:
-            integrand_delta_phi = (
-                (LdotN / (1 - LdotN**2))
-                * Omega_LJ
-                * np.sin(self.theta_LJ(f))
-                * (
-                    np.cos(self.theta_LJ(f)) * sin_i_JN * np.sin(self.phi_LJ(f))
-                    - np.sin(self.theta_LJ(f)) * cos_i_JN
-                )
-                / f_dot
+        # L and N aligned case (coordinate singularity)
+        # EXPANDED THRESHOLD: catch near-singularities before they cause spikes
+        # When |LdotN| is close to 1, the denominator (1 - LdotN²) → 0
+        # causing numerical explosions. Increase threshold to 1e-3 to catch earlier.
+        if np.abs(np.abs(LdotN) - 1) < NEAR_ZERO_THRESHOLD:
+            # NOT face-on & STILL precessing, when L and N are aligned at some point in the precession cycle
+            # very rare, L aligns with N only ONCE as it spirals out --> blows up???
+            # a coordinate singularity!!!
+            return 0
+        
+        # Generic (non face-on) expression
+        denominator = 1 - LdotN**2
+        
+        # Base term (Apostolatos 1994, Eq. A18)
+        base = (
+            (LdotN / denominator)
+            * Omega_LJ
+            * np.sin(theta_LJ)
+            * (
+                np.cos(theta_LJ) * sin_i_JN * np.sin(phi_LJ)
+                - np.sin(theta_LJ) * cos_i_JN
             )
-
-        return integrand_delta_phi
-
-    def phase_delta_phi(self, f):
-        """integrate the delta_phi integrand"""
-        integral = odeint(self.integrand_delta_phi, 0, f)
-        return np.squeeze(integral)
+            / f_dot
+        )
+        
+        # Correction term (Taman et al. 2025, Eq. A19)
+        corr = (LdotN / denominator) * (
+            -(theta_LJ / (3.0 * f)) * np.cos(phi_LJ) * sin_i_JN
+        )
+        
+        return base + corr
 
     def Psi(self, f):
         """GW phase"""
@@ -552,9 +754,103 @@ class Precessing:
 
     def strain(self, f, delta_f=0.25, frequencySeries=True):
         """precessing GW"""
+        
+        # Compute phase with validation
+        delta_phi = self.phase_delta_phi(f)
+        
         strain = self.amplitude(f) * np.exp(
-            1j * (self.Psi(f) - self.phase_phi_P(f) - 2 * self.phase_delta_phi(f))
+            1j * (self.Psi(f) - self.phase_phi_P(f) - 2 * delta_phi)
         )
+
         if frequencySeries:
             return FrequencySeries(strain, delta_f)
+        
         return strain
+    
+class PrecessingV3(PrecessingV2):
+    def phase_delta_phi(self, f):
+        integrand = self.integrand_delta_phi(f)
+
+        I = integrate(integrand, x=f, initial=0)
+        return I
+    
+class Precessing(PrecessingV2):
+    def integrand_delta_phi(self, y, f):
+        """Wrapper to match solve_ivp signature - delegates to integrand_delta_phi_v2."""
+        return self.integrand_delta_phi_v2(y, f)
+
+    def phase_delta_phi(
+        self,
+        f,
+        ivp_method: Union[str, Sequence[str]] = "LSODA",
+        rtol: float = 1e-3,
+        atol: float = 1e-6,
+        max_step: float = np.inf,
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        """Compute delta phi_P using solve_ivp.
+
+        Args:
+            f (array-like): Strictly increasing frequency array.
+            ivp_method (str | Sequence[str]): One or more solve_ivp methods
+                (e.g., "RK45", "RK23", "DOP853", "Radau", "BDF", "LSODA").
+            rtol (float): Relative tolerance for solve_ivp. Default 1e-3.
+            atol (float): Absolute tolerance for solve_ivp. Default 1e-6.
+            max_step (float): Maximum allowed step size.
+
+        Returns:
+            If ivp_method is a string, returns np.ndarray (len(f),).
+            If ivp_method is a sequence, returns dict method -> np.ndarray.
+        """
+        f = np.asarray(f)
+        if f.ndim != 1:
+            f = f.ravel()
+        if not np.all(np.diff(f) > 0):
+            raise ValueError("Frequency array f must be strictly increasing.")
+
+        def _solve_with_method(method_name: str) -> np.ndarray:
+            # Use solve_ivp
+            def rhs(freq, y):
+                # dy/df = integrand_delta_phi(y, f)
+                # Support both y.shape == (1,) and vectorized calls with y.shape == (1, m)
+                try:
+                    # Compute scalar integrand value (independent of y in our model)
+                    val = float(self.integrand_delta_phi(0.0, freq))
+                except Exception:
+                    val = float(self.integrand_delta_phi(y, freq))
+
+                y_arr = np.asarray(y)
+                if y_arr.ndim == 0:
+                    return np.asarray([val], dtype=float)
+                # Broadcast to match shape of y
+                return np.full_like(y_arr, fill_value=val, dtype=float)
+
+            sol = solve_ivp(
+                rhs,
+                (float(f[0]), float(f[-1])),
+                y0=[0.0],
+                t_eval=f,
+                method=method_name,
+                rtol=rtol,
+                atol=atol,
+                max_step=max_step,
+            )
+            if not sol.success:
+                raise RuntimeError(
+                    f"solve_ivp failed with method '{method_name}': {sol.message}"
+                )
+            return sol.y[0]
+
+        if isinstance(ivp_method, str):
+            return _solve_with_method(ivp_method)
+
+        results: Dict[str, np.ndarray] = {}
+        failures = []
+        for method_name in ivp_method:
+            try:
+                results[str(method_name)] = _solve_with_method(str(method_name))
+            except Exception as exc:
+                failures.append((str(method_name), str(exc)))
+
+        if results:
+            return results
+        raise RuntimeError(f"All solve_ivp methods failed: {failures}")

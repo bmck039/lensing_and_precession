@@ -6,9 +6,9 @@ from matplotlib import cm
 from scipy.optimize import fsolve
 from tqdm import tqdm
 
-from lensing_and_precession.modules.Classes_ver2 import *
-from lensing_and_precession.modules.functions_ver2 import *
-from lensing_and_precession.modules.functions_Precessing import *
+from modules.Classes_ver2 import *
+from modules.functions_ver2 import *
+from modules.functions_Precessing import *
 
 from scripts.helper_classes import *
 from scripts.helper_functions import *

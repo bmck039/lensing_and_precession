@@ -1,6 +1,6 @@
 from typing import Any
 
-from lensing_and_precession.modules.functions_ver2 import get_td_from_MLz, get_I_from_y, get_MLz_from_td, get_y_from_I, solar_mass
+from modules.functions_ver2 import get_td_from_MLz, get_I_from_y, get_MLz_from_td, get_y_from_I, solar_mass
 # from modules.default_params_ver2 import *
 # from modules.
 
