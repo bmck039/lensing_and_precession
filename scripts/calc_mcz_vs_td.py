@@ -9,9 +9,11 @@ from tqdm import tqdm
 from modules.Classes_ver2 import *
 from modules.functions_ver2 import *
 from modules.functions_Precessing import *
-
 from scripts.helper_classes import *
 from scripts.helper_functions import *
+
+# Heavy project imports are deferred into main() so `-h/--help` works even if
+# optional modules have issues or are slow to import.
 
 
 # from hanging_threads import start_monitoring
@@ -92,7 +94,7 @@ def main():
     # parser.add_argument('-graph', action="store_true")
     parser.add_argument('-pbar', action="store_true", help='Show progress bar during computation')
     parser.add_argument('-slice', nargs=2, metavar=('MCZ', 'TD'), help='Plot a slice at given mcz and td values')
-    parser.add_argument('-I', type=float, default=0.6, help='Inclination angle I (default: 0.6)')
+    parser.add_argument('-I', type=float, default=0.6, help='Flux Ratio I (default: 0.6)')
     parser.add_argument('-m-bounds', type=float, nargs=2, default=[0.01, 90], metavar=('MIN', 'MAX'), help='Bounds for mcz (default: 0.01 90)')
     parser.add_argument('-td-bounds', type=float, nargs=2, default=[0.01, 0.1], metavar=('MIN', 'MAX'), help='Bounds for td (default: 0.01 0.1)')
     parser.add_argument('-resolution', type=int, nargs=2, default=[100, 100], metavar=('MCZ_RES', 'TD_RES'), help='Resolution for mcz and td grid (default: 100 100)')
