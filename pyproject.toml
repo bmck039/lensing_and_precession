@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "lensing-and-precession"
 version = "0.1.0"
 description = "Distinguishing regularly precessing and lensed gravitational waveforms"
-readme = "lensing_and_precession/README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [
   { name = "Ben McKallip" },
@@ -39,8 +39,8 @@ extras = ["mpld3>=0.5", "pykerr>=0.1", "seaborn", "pandas"]
 jax = ["jax", "equinox", "diffrax"]
 
 [tool.setuptools.packages.find]
-# Include both main package and helper scripts package
-include = ["lensing_and_precession*", "scripts*"]
+# Include packages at repo root: modules/ and scripts/
+include = ["modules*", "scripts*"]
 # Optionally exclude data/output/large folders from wheels
 exclude = ["Figures*", "jupyter*", "output*", "sbatch*", "sbatch_outputs*", "__pycache__*"]
 
