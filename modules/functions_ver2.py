@@ -78,7 +78,6 @@ def get_gw(
     delta_f=0.25,
     lens_Class=LensingGeo,
     prec_Class=Precessing,
-    prec_Class=Precessing,
     frequencySeries=True,
 ):
     """
